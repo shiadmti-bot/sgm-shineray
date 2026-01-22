@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SGM - Sistema de Gestão de Montagem Shineray
 
-## Getting Started
+Sistema web progressivo (PWA) desenvolvido para otimizar a linha de montagem de motocicletas, garantindo rastreabilidade desde a entrada da caixa até a expedição, com controle de qualidade digital e métricas de tempo em tempo real.
 
-First, run the development server:
+## 🚀 Tecnologias Utilizadas
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+* **Frontend:** Next.js 14 (App Router), React, TypeScript.
+* **Estilização:** Tailwind CSS.
+* **UI Kit:** shadcn/ui (Radix UI).
+* **Backend/Banco de Dados:** Supabase (PostgreSQL).
+* **Leitura de Dados:** react-zxing (Barcode Scanner).
+* **Ícones:** Lucide React.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Funcionalidades
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1.  **Entrada Inteligente:**
+    * Leitura de código de barras (Code 128) via câmera do dispositivo.
+    * Registro automático de SKU e Modelo no sistema.
+2.  **Linha de Montagem Digital:**
+    * Fila de produção em tempo real (FIFO).
+    * Cronômetro individual por moto para medição de KPI de eficiência.
+3.  **Quality Gate (Controle de Qualidade):**
+    * Checklist obrigatório para liberação de produto.
+    * Bloqueio de aprovação em caso de itens não conformes.
+    * Registro de reprovas e devolução para retrabalho.
+4.  **Gestão de Estoque:**
+    * Visão geral de produtos prontos, reservados e expedidos.
+    * Filtros dinâmicos e indicadores de performance.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📦 Como Rodar Localmente
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1.  Clone o repositório.
+2.  Instale as dependências:
+    ```bash
+    npm install
+    ```
+3.  Configure as variáveis de ambiente `.env.local` com suas chaves do Supabase:
+    ```env
+    NEXT_PUBLIC_SUPABASE_URL=sua_url
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave
+    ```
+4.  Rode o servidor de desenvolvimento:
+    ```bash
+    npm run dev --webpack
+    ```
