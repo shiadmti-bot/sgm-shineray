@@ -1,65 +1,50 @@
-import Link from "next/link";
-import { Box, Home, LogOut, ScanBarcode, Settings, Wrench } from "lucide-react";
-import { Button } from "@/components/ui/button";
+"use client";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+import { useState } from "react";
+import { Sidebar } from "@/components/Sidebar";
+import { Header } from "@/components/Header"; // <--- Usaremos este componente inteligente
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      {/* SIDEBAR (Apenas Desktop) */}
-      <aside className="hidden md:flex w-64 flex-col bg-zinc-950 text-white border-r border-zinc-800">
-        <div className="p-6 flex items-center gap-2 font-bold text-lg border-b border-zinc-800">
-          <Wrench className="text-primary h-6 w-6" />
-          <span>SGM Shineray</span>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-2">
-          <Link href="/dashboard" className="flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors">
-            <Home className="h-5 w-5" />
-            Visão Geral
-          </Link>
-          <Link href="/scanner" className="flex items-center gap-3 px-4 py-3 bg-primary/10 text-primary font-medium rounded-lg transition-colors">
-            <ScanBarcode className="h-5 w-5" />
-            Entrada de Caixas
-          </Link>
-          <Link href="/montagem" className="flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors">
-            <Wrench className="h-5 w-5" />
-            Linha de Montagem
-          </Link>
-          <Link href="/estoque" className="flex items-center gap-3 px-4 py-3 text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors">
-            <Box className="h-5 w-5" />
-            Estoque
-          </Link>
-        </nav>
-
-        <div className="p-4 border-t border-zinc-800">
-          <Button variant="ghost" className="w-full justify-start text-zinc-400 hover:text-red-400 hover:bg-red-950/30">
-            <LogOut className="mr-2 h-4 w-4" />
-            Sair
-          </Button>
-        </div>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
+      
+      {/* --- DESKTOP SIDEBAR (Fixo na esquerda, escondido no mobile) --- */}
+      <aside className="hidden lg:flex flex-col w-72 fixed inset-y-0 z-50 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+         <Sidebar />
       </aside>
 
-      {/* ÁREA DE CONTEÚDO */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Header Mobile */}
-        <header className="md:hidden h-16 bg-white border-b flex items-center justify-between px-4 sticky top-0 z-50">
-           <div className="font-bold flex items-center gap-2">
-              <Wrench className="text-primary h-5 w-5" />
-              <span className="text-slate-900">Flux Mobile</span>
-           </div>
-           <Button size="icon" variant="ghost">
-             <Settings className="h-5 w-5 text-slate-500" />
-           </Button>
-        </header>
+      {/* --- CONTEÚDO PRINCIPAL --- */}
+      <main className="lg:pl-72 flex flex-col min-h-screen transition-all duration-300">
+        
+        {/* 1. HEADER INTELIGENTE 
+            Passamos a função para abrir o menu mobile quando clicar no hambúrguer do Header 
+        */}
+        <Header onMenuClick={() => setMobileMenuOpen(true)} />
 
-        {/* Onde as páginas vão renderizar */}
-        <div className="flex-1 overflow-auto p-4 md:p-8">
-          {children}
+        {/* 2. MENU MOBILE (SHEET)
+            Controlado pelo estado mobileMenuOpen.
+            Removemos o SheetTrigger porque o botão agora fica dentro do <Header />
+        */}
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetContent side="left" className="p-0 w-72 border-r-slate-200 dark:border-r-slate-800 bg-white dark:bg-slate-950">
+             <SheetTitle className="sr-only">Menu de Navegação</SheetTitle>
+             <SheetDescription className="sr-only">Menu Principal</SheetDescription>
+             
+             {/* Passamos onClose para fechar o menu ao clicar em um link */}
+             <Sidebar onClose={() => setMobileMenuOpen(false)} />
+          </SheetContent>
+        </Sheet>
+
+        {/* 3. ÁREA DE CONTEÚDO */}
+        <div className="flex-1 p-4 md:p-8 overflow-x-hidden">
+           <div className="max-w-7xl mx-auto space-y-6">
+              {children}
+           </div>
         </div>
+
       </main>
     </div>
   );
