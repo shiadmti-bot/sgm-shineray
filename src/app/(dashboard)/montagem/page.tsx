@@ -4,433 +4,481 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { 
-  Timer, Wrench, CheckSquare, Save, AlertCircle, ArrowLeft, Bike, PlayCircle, X, Clock, AlertTriangle 
+  Wrench, Play, Pause, CheckCircle2, AlertTriangle, ArrowRight, RotateCcw, Loader2, Clock 
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { registrarLog } from "@/lib/logger";
 
-// --- CHECKLISTS (Mantidos da versão anterior) ---
-const CHECKLISTS = {
-  STREET: {
-    titulo: "Protocolo Street (JEF/SHI/Worker)",
-    itens: [
-      "Altura e Aperto do Guidon", "Altura do Freio Traseiro", "Folga do Freio Combinado (CBS)",
-      "Aperto do Escapamento", "Regulagem da Corrente", "Parafusos da Carenagem",
-      "Calibragem dos Pneus", "Aperto Alças Bagageiro", "Aperto Piscas (Tras/Dian)",
-      "Trava do Banco", "Luz do Farol, Pisca e Freios", "Altura do Passador de Marcha",
-      "Aperto Eixo Dianteiro", "Aperto Pinça de Freio", "Mangueira de Combustível",
-      "Parafuso Suspensão Tras.", "Porca Amortecedor Central", "Passagem de Cabos", "Luzes Painel"
-    ]
-  },
-  CUB: {
-    titulo: "Protocolo CUB/Scooter (JET/Phoenix)",
-    itens: [
-      "Trava do Guidon", "Aperto do Guidon", "Aperto Parafusos Escape",
-      "Aperto Paraf. Carenagem nº 8", "Regulagem da Corrente", "Parafusos da Carenagem Geral",
-      "Calibragem dos Pneus", "Freios Traseiros", "Luzes e Lâmpadas",
-      "Encaixe das Carenagens", "Parafuso da Pinça de Freio"
-    ]
-  }
-};
-
-type MotoMontagem = {
-  id: string;
-  modelo: string;
-  sku: string;
-  cor: string;
-  ano: string;
-  status: string;
-  inicio_montagem: string | null;
-  observacoes: string;
-};
+const CHECKLIST_ITENS = [
+  "Aperto da roda dianteira", "Aperto da roda traseira", "Aperto do guidão",
+  "Aperto do motor", "Instalação de bateria", "Teste elétrico (Farol/Seta)",
+  "Calibragem de pneus", "Ajuste de corrente", "Verificação de óleo", "Retrovisores fixados"
+];
 
 export default function MontagemPage() {
   const [loading, setLoading] = useState(true);
-  const [fila, setFila] = useState<MotoMontagem[]>([]);
+  const [modo, setModo] = useState<'fila' | 'producao'>('fila');
   
-  // Estados de Controle
-  const [motoSelecionada, setMotoSelecionada] = useState<MotoMontagem | null>(null); // Moto no Modal de Confirmação
-  const [motoAtiva, setMotoAtiva] = useState<MotoMontagem | null>(null); // Moto sendo trabalhada
+  const [fila, setFila] = useState<any[]>([]);
+  const [filaRetrabalho, setFilaRetrabalho] = useState<any[]>([]);
+  const [motoAtiva, setMotoAtiva] = useState<any>(null);
   
-  // Workbench
-  const [checklistMarcado, setChecklistMarcado] = useState<Record<string, boolean>>({});
-  const [observacao, setObservacao] = useState("");
-  const [tempoDecorrido, setTempoDecorrido] = useState(0);
+  const [checklist, setChecklist] = useState<Record<string, boolean>>({});
+  
+  // Controle de Pausa Remota
+  const [aguardandoAutorizacao, setAguardandoAutorizacao] = useState(false);
 
   useEffect(() => {
-    fetchFila();
-    recuperarSessao();
-  }, []);
-
-  // Timer: Roda independente da aba estar aberta
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (motoAtiva && motoAtiva.inicio_montagem) {
-      // Função que recalcula o tempo baseado na hora de início (Server Time)
-      // Isso garante que se o cara fechar a aba as 14:00 e voltar as 14:10, o timer pula 10 min
-      const atualizarTimer = () => {
-        const start = new Date(motoAtiva.inicio_montagem!).getTime();
-        const now = new Date().getTime();
-        const diff = Math.floor((now - start) / 1000);
-        setTempoDecorrido(diff > 0 ? diff : 0);
-      };
-
-      atualizarTimer(); // Atualiza já na montagem
-      interval = setInterval(atualizarTimer, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [motoAtiva]);
-
-  async function fetchFila() {
-    setLoading(true);
-    const { data } = await supabase
-      .from('motos')
-      .select('*')
-      .in('status', ['montagem', 'em_andamento'])
-      .order('created_at', { ascending: true });
+    verificarEstadoAtual();
     
-    if (data) setFila(data as any);
-    setLoading(false);
-  }
+    const interval = setInterval(() => {
+        if (modo === 'fila') {
+            const user = JSON.parse(localStorage.getItem('sgm_user') || '{}');
+            if(user.id) carregarListas(user.id);
+        }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [modo]); // Dependência adicionada para otimizar polling
 
-  // Recupera se o usuário deu F5 ou fechou a aba
-  function recuperarSessao() {
-    const salva = localStorage.getItem("sgm_moto_ativa");
-    if (salva) {
-       const m = JSON.parse(salva);
-       // Verifica se ainda faz sentido (status não mudou no banco por outro gestor)
-       setMotoAtiva(m);
-       setObservacao(m.observacoes || "");
-    }
-  }
+  // Salva o checklist localmente
+  useEffect(() => {
+      if (motoAtiva && Object.keys(checklist).length > 0) {
+          localStorage.setItem(`checklist_${motoAtiva.id}`, JSON.stringify(checklist));
+      }
+  }, [checklist, motoAtiva]);
 
-  const confirmarInicio = async () => {
-    if (!motoSelecionada) return;
+  // Listener de Pausa (Realtime)
+  useEffect(() => {
+    if (!aguardandoAutorizacao) return;
 
-    const agora = new Date().toISOString();
     const userStr = localStorage.getItem('sgm_user');
     const user = userStr ? JSON.parse(userStr) : null;
 
-    // Atualiza Banco
-    const { error } = await supabase
-      .from('motos')
-      .update({ 
-        status: 'em_andamento', 
-        inicio_montagem: agora,
-        montador_id: user?.id 
-      })
-      .eq('id', motoSelecionada.id);
+    const channel = supabase
+      .channel('minhas-solicitacoes')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'solicitacoes_pausa', filter: `montador_id=eq.${user?.id}` },
+        (payload) => {
+          if (payload.new.status === 'aprovado') {
+             toast.success("Pausa Autorizada!");
+             setAguardandoAutorizacao(false);
+             verificarEstadoAtual(); // Recarrega para cair na tela de "Pausado"
+          } else if (payload.new.status === 'rejeitado') {
+             toast.error("Solicitação negada.");
+             setAguardandoAutorizacao(false);
+          }
+        }
+      )
+      .subscribe();
 
-    if (error) {
-      toast.error("Erro de conexão. Tente novamente.");
-      return;
+    return () => { supabase.removeChannel(channel); };
+  }, [aguardandoAutorizacao]);
+
+
+  async function verificarEstadoAtual() {
+    setLoading(true);
+    const userStr = localStorage.getItem('sgm_user');
+    const user = userStr ? JSON.parse(userStr) : null;
+    
+    if (!user) { setLoading(false); return; }
+
+    try {
+        // 1. Verifica Motos Ativas
+        const { data: ativa } = await supabase
+          .from('motos')
+          .select('*')
+          .eq('montador_id', user.id)
+          .in('status', ['em_producao', 'pausado']) 
+          .maybeSingle();
+
+        if (ativa) {
+          setMotoAtiva(ativa);
+          
+          // --- VERIFICAÇÃO DE PERSISTÊNCIA DE SOLICITAÇÃO ---
+          // Se a moto está ativa, verifica se já existe um pedido PENDENTE para ela
+          if (ativa.status !== 'pausado') {
+             const { data: solicitacaoPendente } = await supabase
+                .from('solicitacoes_pausa')
+                .select('id')
+                .eq('moto_id', ativa.id)
+                .eq('status', 'pendente')
+                .maybeSingle();
+             
+             if (solicitacaoPendente) {
+                 setAguardandoAutorizacao(true); // <--- REATIVA O LOADING/BLOQUEIO
+             } else {
+                 setAguardandoAutorizacao(false);
+             }
+          } else {
+              // Se já está pausado, não precisa esperar autorização
+              setAguardandoAutorizacao(false);
+          }
+          // --------------------------------------------------
+
+          if (ativa.status === 'pausado') {
+              setModo('fila');
+          } else {
+              setModo('producao');
+          }
+          
+          // Recupera checklist (código existente...)
+          const salvo = localStorage.getItem(`checklist_${ativa.id}`);
+          if (salvo) { setChecklist(JSON.parse(salvo)); } 
+          else {
+              const checkInicial: any = {};
+              CHECKLIST_ITENS.forEach(i => checkInicial[i] = false);
+              setChecklist(checkInicial);
+          }
+        } else {
+          setMotoAtiva(null);
+          setModo('fila');
+          await carregarListas(user.id);
+        }
+    } catch (err) {
+        console.error(err);
+        toast.error("Erro de conexão.");
+    } finally {
+        setLoading(false);
+    }
+  }
+
+  async function carregarListas(userId: string) {
+    // Busca Retrabalhos COM o nome do supervisor que reprovou
+    const reqRetrabalho = supabase
+        .from('motos')
+        .select(`
+            *,
+            supervisor:funcionarios!motos_supervisor_id_fkey(nome)
+        `)
+        .eq('status', 'retrabalho_montagem')
+        .eq('montador_id', userId);
+
+    const reqCaixas = supabase
+        .from('motos')
+        .select('*')
+        .eq('status', 'aguardando_montagem')
+        .order('created_at', { ascending: true });
+
+    const [resRetrabalho, resCaixas] = await Promise.all([reqRetrabalho, reqCaixas]);
+
+    if(resRetrabalho.data) setFilaRetrabalho(resRetrabalho.data);
+    if(resCaixas.data) setFila(resCaixas.data);
+  }
+
+  async function iniciarTrabalho(moto: any, ehRetrabalho: boolean) {
+    const userStr = localStorage.getItem('sgm_user');
+    const user = userStr ? JSON.parse(userStr) : null;
+
+    const updateData: any = {
+        status: 'em_producao',
+        montador_id: user.id
+    };
+
+    if (!ehRetrabalho) {
+        updateData.inicio_montagem = new Date().toISOString();
     }
 
-    // Atualiza Estado Local
-    const motoAtualizada = { ...motoSelecionada, status: 'em_andamento', inicio_montagem: agora };
-    setMotoAtiva(motoAtualizada);
-    localStorage.setItem("sgm_moto_ativa", JSON.stringify(motoAtualizada));
-    
-    // Limpa modais
-    setMotoSelecionada(null);
-    setTempoDecorrido(0);
-    toast.success("Cronômetro iniciado! Bom trabalho.");
+    setLoading(true); 
+
+    const { error } = await supabase.from('motos').update(updateData).eq('id', moto.id);
+
+    if (error) {
+      toast.error("Erro ao iniciar.");
+      setLoading(false);
+    } else {
+      toast.success(ehRetrabalho ? "Retrabalho Iniciado!" : "Montagem Iniciada!");
+      await registrarLog('INICIO_MONTAGEM', moto.sku);
+      verificarEstadoAtual();
+    }
+  }
+
+  const handleMarcarTudo = () => {
+    const novoCheck: any = {};
+    CHECKLIST_ITENS.forEach(i => novoCheck[i] = true);
+    setChecklist(novoCheck);
+    toast.success("Checklist preenchido!");
+  };
+
+  const toggleCheck = (item: string) => {
+    setChecklist(prev => ({ ...prev, [item]: !prev[item] }));
   };
 
   const finalizarMontagem = async () => {
-    if (!motoAtiva) return;
-
-    const agora = new Date().toISOString();
-    const minutosTotais = Math.floor(tempoDecorrido / 60);
-
-    const { error } = await supabase
-      .from('motos')
-      .update({
-        status: 'qualidade',
-        fim_montagem: agora,
-        tempo_montagem: minutosTotais,
-        checklist_dados: checklistMarcado,
-        observacoes: observacao
-      })
-      .eq('id', motoAtiva.id);
-
-    if (error) {
-      toast.error("Erro ao finalizar. Verifique sua conexão.");
+    const pendentes = CHECKLIST_ITENS.filter(i => !checklist[i]);
+    if (pendentes.length > 0) {
+      toast.error(`Checklist incompleto!`);
       return;
     }
 
-    toast.success(`Montagem finalizada em ${minutosTotais} min!`);
+    if (!motoAtiva) return;
+
+    let updatePayload: any = {
+        status: 'em_analise',
+        fim_montagem: new Date().toISOString()
+    };
     
-    // Reset Total
-    setMotoAtiva(null);
-    setChecklistMarcado({});
-    setObservacao("");
-    setTempoDecorrido(0);
-    localStorage.removeItem("sgm_moto_ativa");
-    fetchFila();
+    if (motoAtiva.observacoes?.includes('RETRABALHO')) {
+        updatePayload.observacoes = null; 
+    }
+
+    const { error } = await supabase.from('motos').update(updatePayload).eq('id', motoAtiva.id);
+
+    if (error) toast.error("Erro ao finalizar.");
+    else {
+      toast.success("Enviado para Qualidade.");
+      await registrarLog('FIM_MONTAGEM', motoAtiva.sku);
+      localStorage.removeItem(`checklist_${motoAtiva.id}`);
+      setMotoAtiva(null);
+      verificarEstadoAtual();
+    }
   };
 
-  const formatTime = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  const handleSolicitarPausa = async () => {
+      const motivo = prompt("Qual o motivo da pausa? (Ex: Almoço, Banheiro, Peça)");
+      if (!motivo) return;
+
+      setAguardandoAutorizacao(true);
+      const userStr = localStorage.getItem('sgm_user');
+      const user = userStr ? JSON.parse(userStr) : null;
+
+      const { error } = await supabase.from('solicitacoes_pausa').insert({
+          montador_id: user?.id,
+          moto_id: motoAtiva.id,
+          motivo: motivo
+      });
+
+      if (error) {
+          toast.error("Erro ao enviar solicitação.");
+          setAguardandoAutorizacao(false);
+      } else {
+          toast.info("Solicitação enviada! Aguarde...");
+      }
   };
 
-  const identificarChecklist = (modelo: string) => {
-    const m = modelo.toUpperCase();
-    if (m.includes("JEF") || m.includes("WORKER") || m.includes("SHI")) return CHECKLISTS.STREET;
-    return CHECKLISTS.CUB;
-  };
+  // --- MUDANÇA: Retomar leva para modo produção ---
+  const handleRetomar = async () => {
+      const { error } = await supabase.from('motos').update({ status: 'em_producao' }).eq('id', motoAtiva.id);
+      if(!error) {
+          toast.success("Produção Retomada");
+          verificarEstadoAtual(); // Isso mudará o modo para 'producao' automaticamente
+      }
+  }
+
+  if (loading) return (
+    <div className="p-8 flex flex-col items-center justify-center h-full space-y-4">
+        <Skeleton className="h-64 w-full rounded-2xl" />
+        <p className="text-slate-500 animate-pulse">Sincronizando com a linha...</p>
+    </div>
+  );
 
   return (
-    <RoleGuard allowedRoles={['mecanico', 'gestor']}>
-      <div className="space-y-6 pb-20 relative min-h-screen">
-
-        {/* --- MODAL DE CONFIRMAÇÃO (Janela "Antes de Entrar") --- */}
-        {motoSelecionada && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-             <Card className="w-full max-w-lg shadow-2xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
-                <CardHeader className="border-b border-slate-100 dark:border-slate-800">
-                   <div className="flex justify-between items-start">
-                      <CardTitle className="text-xl font-bold text-slate-800 dark:text-white">
-                         Preparar Bancada
-                      </CardTitle>
-                      <button onClick={() => setMotoSelecionada(null)} className="text-slate-400 hover:text-slate-600">
-                         <X className="w-6 h-6" />
-                      </button>
-                   </div>
-                </CardHeader>
-                <CardContent className="p-6 space-y-6">
-                   
-                   {/* Detalhes da Moto */}
-                   <div className="flex gap-4 items-start">
-                      <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center shrink-0">
-                         <Bike className="w-10 h-10 text-slate-400" />
-                      </div>
-                      <div className="space-y-1">
-                         <h2 className="text-2xl font-black text-slate-900 dark:text-white leading-none">
-                            {motoSelecionada.modelo}
-                         </h2>
-                         <Badge variant="outline" className="text-slate-500 font-mono text-xs">
-                            {motoSelecionada.sku}
-                         </Badge>
-                         <div className="flex gap-2 pt-2">
-                            <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300">
-                               {motoSelecionada.cor}
-                            </Badge>
-                            <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300">
-                               {motoSelecionada.ano}
-                            </Badge>
-                         </div>
-                      </div>
-                   </div>
-
-                   {/* Aviso do Timer */}
-                   <div className="bg-orange-50 dark:bg-orange-900/20 border-l-4 border-orange-500 p-4 rounded-r-lg">
-                      <div className="flex gap-3">
-                         <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0" />
-                         <div className="text-sm text-orange-800 dark:text-orange-200">
-                            <p className="font-bold mb-1">Atenção ao Tempo</p>
-                            <p className="opacity-90">
-                               Ao clicar em iniciar, o cronômetro começará a rodar automaticamente e 
-                               <strong> continuará contando mesmo se você sair desta tela</strong>.
-                            </p>
-                         </div>
-                      </div>
-                   </div>
-
-                   {/* Ações */}
-                   <div className="grid grid-cols-2 gap-3 pt-2">
-                      <Button variant="outline" onClick={() => setMotoSelecionada(null)} className="h-12">
-                         Cancelar
-                      </Button>
-                      <Button 
-                         onClick={confirmarInicio} 
-                         className="h-12 bg-green-600 hover:bg-green-700 text-white font-bold text-lg shadow-lg shadow-green-600/20"
-                      >
-                         <PlayCircle className="w-5 h-5 mr-2" /> INICIAR
-                      </Button>
-                   </div>
-
-                </CardContent>
-             </Card>
-          </div>
-        )}
-
-        {/* --- TELA PRINCIPAL --- */}
+    <RoleGuard allowedRoles={['montador', 'supervisor', 'master']}>
+      <div className="space-y-6 animate-in fade-in pb-20">
         
-        {/* CABEÇALHO (Só aparece se não estiver focado) */}
-        {!motoAtiva && (
-          <div>
-             <h1 className="text-3xl font-bold text-slate-900 dark:text-white flex items-center gap-3">
-                <Wrench className="w-8 h-8 text-orange-600" /> Linha de Montagem
-             </h1>
-             <p className="text-slate-500">Selecione uma ordem de serviço para iniciar.</p>
+        {/* MODO FILA (Agora inclui aviso de pausa) */}
+        {modo === 'fila' && (
+          <>
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-black text-slate-900 dark:text-white">Central de Montagem</h1>
+                <p className="text-slate-500">Selecione uma tarefa para iniciar.</p>
+              </div>
+            </div>
+
+            {/* --- NOVO: CARD DE RETOMADA (MOTO PAUSADA) --- */}
+            {motoAtiva && motoAtiva.status === 'pausado' && (
+                <div className="mb-8 animate-in slide-in-from-top-4 duration-500">
+                    <Card className="border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-900/20 shadow-xl border-amber-200 dark:border-amber-800">
+                        <CardHeader className="pb-2">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="relative flex h-3 w-3">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                                </span>
+                                <Badge variant="outline" className="text-amber-700 border-amber-500 bg-amber-100">PRODUÇÃO PAUSADA</Badge>
+                            </div>
+                            <CardTitle className="text-2xl">{motoAtiva.modelo}</CardTitle>
+                            <CardDescription className="font-mono text-slate-600 dark:text-slate-300">
+                                SKU: {motoAtiva.sku}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                             <div className="flex items-center gap-4 bg-white/50 dark:bg-black/20 p-4 rounded-lg mb-4">
+                                <Clock className="w-5 h-5 text-amber-600"/>
+                                <div>
+                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Aguardando Retomada</p>
+                                    <p className="text-xs text-slate-500">Clique abaixo quando estiver pronto para voltar.</p>
+                                </div>
+                             </div>
+                             <Button onClick={handleRetomar} className="w-full h-14 text-lg font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-600/20">
+                                <Play className="w-5 h-5 mr-2 fill-current" /> RETOMAR PRODUÇÃO
+                             </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            {/* SEÇÃO DE ALERTA: RETRABALHO */}
+            {filaRetrabalho.length > 0 && (
+                <div className="mb-8">
+                    <h3 className="text-lg font-bold text-red-600 mb-4 flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5" /> ATENÇÃO: RETRABALHO PENDENTE
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {filaRetrabalho.map(moto => (
+                            <Card key={moto.id} className="border-l-4 border-l-red-600 bg-red-50 dark:bg-red-900/20 shadow-lg animate-pulse">
+                                <CardHeader className="pb-2">
+                                    <div className="flex justify-between items-start">
+                                        <Badge variant="destructive" className="animate-bounce">CORRIGIR ERRO</Badge>
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-bold text-red-600 uppercase block">Reprovado por</span>
+                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                {moto.supervisor?.nome || 'Supervisor'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <CardTitle className="text-xl mt-2">{moto.modelo}</CardTitle>
+                                    <div className="bg-white/50 dark:bg-black/20 p-2 rounded border border-red-200 dark:border-red-800 mt-2">
+                                        <p className="text-sm font-bold text-red-700 dark:text-red-400">
+                                            "{moto.observacoes?.replace(/RETRABALHO.*?: /, '')}"
+                                        </p>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <Button onClick={() => iniciarTrabalho(moto, true)} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold h-12 shadow-red-900/20 shadow-lg">
+                                        <RotateCcw className="w-5 h-5 mr-2" /> CORRIGIR AGORA
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* SEÇÃO: FILA NORMAL (Desabilitada visualmente se houver pausa ativa) */}
+            <div className={motoAtiva && motoAtiva.status === 'pausado' ? 'opacity-40 pointer-events-none grayscale' : ''}>
+                <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+                    <Wrench className="w-5 h-5" /> Fila de Produção
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {fila.length === 0 ? (
+                    <div className="col-span-full py-12 text-center border-2 border-dashed rounded-xl border-slate-200 dark:border-slate-800">
+                        <p className="text-slate-400">Nenhuma caixa aguardando.</p>
+                    </div>
+                ) : (
+                    fila.map((moto) => (
+                    <Card key={moto.id} className="hover:border-blue-500 transition-all border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                        <CardHeader className="pb-2">
+                        <div className="flex justify-between items-start">
+                            <Badge variant="secondary" className="font-mono">{moto.sku}</Badge>
+                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">NOVA</Badge>
+                        </div>
+                        <CardTitle className="text-xl mt-2">{moto.modelo}</CardTitle>
+                        <CardDescription>{moto.localizacao || 'Sem local'}</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                        <Button onClick={() => iniciarTrabalho(moto, false)} className="w-full bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-bold">
+                            <Play className="w-4 h-4 mr-2" /> INICIAR
+                        </Button>
+                        </CardContent>
+                    </Card>
+                    ))
+                )}
+                </div>
+            </div>
+          </>
+        )}
+
+        {/* MODO PRODUÇÃO (Tela de Checklist) */}
+        {modo === 'producao' && motoAtiva && (
+          <div className="max-w-4xl mx-auto">
+             
+             {/* Header */}
+             <div className={`
+                ${motoAtiva.observacoes?.includes('RETRABALHO') ? 'bg-red-600' : 'bg-blue-600'} 
+                text-white p-6 rounded-t-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-4 transition-colors duration-500`}>
+                <div>
+                   <p className="text-white/80 text-sm font-bold uppercase tracking-widest mb-1 flex items-center gap-2">
+                       {motoAtiva.observacoes?.includes('RETRABALHO') ? <><RotateCcw className="w-4 h-4"/> CORREÇÃO</> : 
+                        <><Play className="w-4 h-4 animate-pulse"/> EM PRODUÇÃO</>}
+                   </p>
+                   <h1 className="text-3xl font-black">{motoAtiva.modelo}</h1>
+                   <p className="opacity-90 font-mono">{motoAtiva.sku}</p>
+                </div>
+                
+                <div className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-lg text-center min-w-[120px]">
+                    <span className="block text-xs uppercase font-bold opacity-80">Tempo</span>
+                    <span className="text-xl font-bold">ATIVO</span>
+                </div>
+             </div>
+
+            <Card className="rounded-t-none border-t-0 bg-white dark:bg-slate-900 shadow-xl border-slate-200 dark:border-slate-800">
+              <CardContent className="p-6 md:p-8 space-y-8">
+                
+                {/* Overlay de Bloqueio de Pausa (Aguardando) */}
+                {aguardandoAutorizacao && (
+                    <div className="absolute inset-0 bg-white/90 dark:bg-black/90 z-50 flex flex-col items-center justify-center rounded-b-xl backdrop-blur-sm animate-in fade-in">
+                        <Loader2 className="w-16 h-16 text-blue-600 animate-spin mb-4" />
+                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Solicitação Enviada!</h2>
+                        <p className="text-slate-500 text-lg">Aguarde a liberação do supervisor...</p>
+                    </div>
+                )}
+
+                {motoAtiva.observacoes?.includes('RETRABALHO') && (
+                    <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-900/50">
+                        <p className="font-bold text-red-700 dark:text-red-400">Correção Solicitada:</p>
+                        <p className="text-lg">{motoAtiva.observacoes}</p>
+                    </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-6 gap-4">
+                   <h2 className="text-xl font-bold flex items-center gap-2"><CheckCircle2 className="w-5 h-5"/> Checklist de Montagem</h2>
+                   <div className="flex gap-2 w-full sm:w-auto">
+                      <Button variant="outline" onClick={handleSolicitarPausa} className="flex-1 sm:flex-none text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-900/50 dark:hover:bg-amber-900/20">
+                         <Pause className="w-4 h-4 mr-2" /> PAUSAR
+                      </Button>
+                      
+                      <Button variant="secondary" onClick={handleMarcarTudo} className="flex-1 sm:flex-none">
+                         MARCAR TUDO
+                      </Button>
+                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {CHECKLIST_ITENS.map((item, idx) => (
+                    <div 
+                        key={idx} 
+                        onClick={() => toggleCheck(item)} 
+                        className={`flex items-center space-x-3 p-4 rounded-xl border-2 transition-all cursor-pointer
+                            ${checklist[item] ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-300'}`}
+                    >
+                      <Checkbox checked={checklist[item]} className="data-[state=checked]:bg-green-500" />
+                      <label className="text-sm font-medium cursor-pointer select-none">{item}</label>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+                   <Button 
+                     onClick={finalizarMontagem} 
+                     className="w-full h-16 text-lg font-bold bg-green-600 hover:bg-green-700 shadow-lg shadow-green-600/20"
+                   >
+                      {motoAtiva.observacoes?.includes('RETRABALHO') ? 'CORREÇÃO FINALIZADA' : 'FINALIZAR MONTAGEM'} <ArrowRight className="ml-2 w-6 h-6" />
+                   </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
-        {/* 1. LISTA DE ESPERA */}
-        {!motoAtiva && (
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in slide-in-from-bottom-4 duration-500">
-              {loading ? (
-                 <div className="col-span-full text-center py-20"><p>Buscando ordens...</p></div>
-              ) : fila.length === 0 ? (
-                 <div className="col-span-full flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-                    <Bike className="w-16 h-16 text-slate-300 mb-4" />
-                    <p className="text-slate-500 text-lg font-medium">Linha parada</p>
-                    <p className="text-sm text-slate-400">Nenhuma moto registrada na entrada.</p>
-                 </div>
-              ) : (
-                 fila.map((moto) => (
-                    <Card 
-                      key={moto.id} 
-                      className="cursor-pointer hover:border-orange-500 hover:-translate-y-1 transition-all hover:shadow-xl group bg-white dark:bg-slate-900"
-                      onClick={() => setMotoSelecionada(moto)} // <--- Abre o Modal em vez de iniciar direto
-                    >
-                       <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                          <div className="flex justify-between items-start">
-                             <Badge variant="outline" className="font-mono text-xs text-slate-400">
-                                {moto.sku.substring(0, 8)}...
-                             </Badge>
-                             <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></div>
-                          </div>
-                          <CardTitle className="text-lg pt-2">{moto.modelo}</CardTitle>
-                       </CardHeader>
-                       <CardContent className="pt-4">
-                          <div className="flex justify-between items-center text-sm text-slate-500 mb-4">
-                             <span className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{moto.cor}</span>
-                             <span className="bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{moto.ano}</span>
-                          </div>
-                          <Button className="w-full bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 hover:bg-orange-600 hover:text-white border-orange-200 dark:border-orange-900 border transition-colors">
-                             VISUALIZAR ORDEM
-                          </Button>
-                       </CardContent>
-                    </Card>
-                 ))
-              )}
-           </div>
-        )}
-
-        {/* 2. ÁREA DE TRABALHO (WORKBENCH) */}
-        {motoAtiva && (
-           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in zoom-in-95 duration-300">
-              
-              {/* PAINEL ESQUERDO (Timer e Info) */}
-              <div className="space-y-6 lg:sticky lg:top-6 h-fit">
-                 
-                 {/* Cronômetro */}
-                 <Card className="bg-slate-900 text-white border-0 shadow-2xl overflow-hidden relative">
-                    <div className="absolute top-0 right-0 p-8 opacity-10">
-                       <Timer className="w-32 h-32" />
-                    </div>
-                    <CardContent className="p-8 text-center relative z-10">
-                       <div className="flex items-center justify-center gap-2 mb-2 text-orange-400 animate-pulse">
-                          <Clock className="w-4 h-4" />
-                          <span className="text-xs font-bold uppercase tracking-widest">Em Execução</span>
-                       </div>
-                       <div className="text-7xl font-mono font-black tracking-tighter mb-6">
-                          {formatTime(tempoDecorrido)}
-                       </div>
-                       
-                       <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 text-left border border-white/10">
-                          <h2 className="text-xl font-bold mb-1">{motoAtiva.modelo}</h2>
-                          <p className="font-mono text-xs text-slate-400 mb-3">{motoAtiva.sku}</p>
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                             <div className="bg-black/30 p-2 rounded">
-                                <span className="block text-slate-400">Cor</span>
-                                <span className="font-bold">{motoAtiva.cor}</span>
-                             </div>
-                             <div className="bg-black/30 p-2 rounded">
-                                <span className="block text-slate-400">Ano</span>
-                                <span className="font-bold">{motoAtiva.ano}</span>
-                             </div>
-                          </div>
-                       </div>
-                    </CardContent>
-                 </Card>
-
-                 <Button 
-                    variant="outline" 
-                    className="w-full border-dashed border-2 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
-                    onClick={() => {
-                        setMotoAtiva(null);
-                        localStorage.removeItem("sgm_moto_ativa");
-                        toast.info("Trabalho pausado. O tempo continua contando.");
-                    }}
-                 >
-                    <ArrowLeft className="w-4 h-4 mr-2" /> Voltar para Fila (Não para o timer)
-                 </Button>
-              </div>
-
-              {/* PAINEL DIREITO (Checklist) */}
-              <div className="lg:col-span-2 space-y-6">
-                 <Card className="border-t-4 border-t-orange-500 shadow-md">
-                    <CardHeader className="bg-slate-50/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800">
-                       <div className="flex justify-between items-center">
-                          <CardTitle className="flex items-center gap-2 text-lg">
-                             <CheckSquare className="w-5 h-5 text-green-600" />
-                             Checklist de Montagem
-                          </CardTitle>
-                          <Badge variant="secondary" className="bg-white dark:bg-slate-800">
-                             {identificarChecklist(motoAtiva.modelo).titulo}
-                          </Badge>
-                       </div>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                       <div className="grid grid-cols-1 gap-3">
-                          {identificarChecklist(motoAtiva.modelo).itens.map((item, idx) => (
-                             <div 
-                                key={idx} 
-                                className={`flex items-start space-x-4 p-4 rounded-xl transition-all border ${checklistMarcado[item] ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-900' : 'bg-white border-slate-100 hover:border-slate-300 dark:bg-slate-950 dark:border-slate-800'}`}
-                             >
-                                <Checkbox 
-                                  id={`item-${idx}`} 
-                                  className="mt-1 w-5 h-5 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
-                                  checked={checklistMarcado[item] || false}
-                                  onCheckedChange={(checked) => 
-                                     setChecklistMarcado(prev => ({...prev, [item]: checked === true}))
-                                  }
-                                />
-                                <label 
-                                  htmlFor={`item-${idx}`} 
-                                  className={`text-base font-medium leading-snug cursor-pointer select-none flex-1 ${checklistMarcado[item] ? 'text-green-800 dark:text-green-300' : 'text-slate-700 dark:text-slate-300'}`}
-                                >
-                                  {item}
-                                </label>
-                             </div>
-                          ))}
-                       </div>
-
-                       <div className="mt-8">
-                          <label className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 block">
-                             Diário de Bordo / Observações
-                          </label>
-                          <Textarea 
-                             placeholder="Descreva eventuais problemas ou detalhes da montagem..."
-                             value={observacao}
-                             onChange={(e) => setObservacao(e.target.value)}
-                             className="bg-slate-50 dark:bg-slate-900 min-h-[100px] border-slate-200 dark:border-slate-800 focus:border-orange-500 transition-colors"
-                          />
-                       </div>
-                    </CardContent>
-                 </Card>
-
-                 <Button 
-                    size="lg" 
-                    className="w-full h-20 text-xl font-bold bg-green-600 hover:bg-green-700 shadow-xl shadow-green-600/20 transition-transform active:scale-95"
-                    onClick={finalizarMontagem}
-                 >
-                    <Save className="w-6 h-6 mr-3" /> FINALIZAR E ENVIAR PARA QUALIDADE
-                 </Button>
-              </div>
-
-           </div>
-        )}
       </div>
     </RoleGuard>
   );

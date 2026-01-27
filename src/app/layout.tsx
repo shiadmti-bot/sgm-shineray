@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-// 1. Importamos os componentes necessários
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "sonner";
+import { CentralSolicitacoes } from "@/components/CentralSolicitacoes"; // <--- 1. Importação adicionada
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,21 +26,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // "suppressHydrationWarning" evita erros do next-themes ao carregar
     <html lang="pt-BR" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {/* 2. AQUI ESTAVA FALTANDO: O ThemeProvider envolvendo tudo */}
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
         >
+          {/* 2. Componente de Alertas Globais (Escuta o banco em tempo real) */}
+          <CentralSolicitacoes />
+
           {children}
           
-          {/* Componente de notificações (Sonner) */}
           <Toaster />
         </ThemeProvider>
       </body>

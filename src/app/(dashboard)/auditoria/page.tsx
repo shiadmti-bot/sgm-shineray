@@ -3,155 +3,261 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
-import { ShieldAlert, Search, Clock, FileText } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { 
+  ShieldAlert, Search, FileJson, Calendar, User, 
+  Filter, Download, AlertTriangle, CheckCircle2, Info, PlusCircle, Trash2, Edit
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
-type Log = {
+type LogSistema = {
   id: string;
-  created_at: string;
   acao: string;
   alvo: string;
-  autor: { nome: string; cargo: string } | null;
-  detalhes: any;
+  detalhes: any; // JSONB
+  created_at: string;
+  autor: {
+    nome: string;
+    cargo: string;
+    email: string;
+  } | null;
 };
 
 export default function AuditoriaPage() {
-  const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<LogSistema[]>([]);
   const [busca, setBusca] = useState("");
+  const [filtroAcao, setFiltroAcao] = useState("todos");
 
   useEffect(() => {
     fetchLogs();
-  }, []);
+  }, [filtroAcao]);
 
   async function fetchLogs() {
     setLoading(true);
-    const { data } = await supabase
+    
+    let query = supabase
       .from('logs_sistema')
-      .select(`*, autor:funcionarios(nome, cargo)`)
+      .select(`
+        *,
+        autor:funcionarios(nome, cargo, email)
+      `)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(100); // Traz os últimos 100 para performance
 
-    if (data) setLogs(data as any);
+    if (filtroAcao !== 'todos') {
+        query = query.eq('acao', filtroAcao);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      toast.error("Erro ao carregar auditoria.");
+    } else {
+      setLogs(data as LogSistema[]);
+    }
     setLoading(false);
   }
 
+  // Filtragem local por texto (Nome ou Alvo)
   const logsFiltrados = logs.filter(log => 
-    log.acao.toLowerCase().includes(busca.toLowerCase()) ||
-    (log.alvo && log.alvo.toLowerCase().includes(busca.toLowerCase())) ||
-    (log.autor && log.autor.nome.toLowerCase().includes(busca.toLowerCase()))
+    log.autor?.nome.toLowerCase().includes(busca.toLowerCase()) ||
+    log.alvo.toLowerCase().includes(busca.toLowerCase()) ||
+    JSON.stringify(log.detalhes).toLowerCase().includes(busca.toLowerCase())
   );
 
+  // Helper de UI para Tipos de Ação
+  const getActionStyle = (acao: string) => {
+      switch(acao) {
+          case 'LOGIN': return { icon: User, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' };
+          case 'CADASTRO': return { icon: PlusCircle, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20' };
+          case 'EDICAO': return { icon: Edit, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' };
+          case 'EXCLUSAO': return { icon: Trash2, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-900/20' };
+          case 'ARQUIVAMENTO': return { icon: Trash2, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-800' };
+          case 'PAUSA': return { icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-900/20' };
+          default: return { icon: Info, color: 'text-slate-500', bg: 'bg-slate-50 dark:bg-slate-800' };
+      }
+  };
+
+  const handleExportCSV = () => {
+    if (logsFiltrados.length === 0) return toast.warning("Nada para exportar");
+    
+    const headers = ["Data", "Hora", "Autor", "Cargo", "Ação", "Alvo", "Detalhes"];
+    const rows = logsFiltrados.map(log => [
+        new Date(log.created_at).toLocaleDateString(),
+        new Date(log.created_at).toLocaleTimeString(),
+        log.autor?.nome || 'Sistema',
+        log.autor?.cargo || '-',
+        log.acao,
+        log.alvo,
+        JSON.stringify(log.detalhes).replace(/"/g, '""') // Escape quotes
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `auditoria_shineray_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+  };
+
   return (
-    <RoleGuard allowedRoles={['master']}>
-      <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+    <RoleGuard allowedRoles={['master', 'gestor']}>
+      <div className="space-y-6 animate-in fade-in pb-20">
         
-        {/* CABEÇALHO */}
-        <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
+        {/* Cabeçalho */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
-               <ShieldAlert className="w-8 h-8 text-purple-600" /> Auditoria & Logs
+            <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+               <ShieldAlert className="w-8 h-8 text-red-600" /> Auditoria
             </h1>
-            <p className="text-slate-500 dark:text-slate-400">Rastreabilidade completa de ações administrativas.</p>
+            <p className="text-slate-500">Rastreabilidade de segurança e ações sensíveis.</p>
           </div>
-          <Badge variant="outline" className="text-xs font-mono text-slate-500 dark:text-slate-400 hidden md:flex">
-            {logs.length} eventos recentes
-          </Badge>
+          <Button variant="outline" onClick={handleExportCSV} className="border-slate-200 dark:border-slate-800">
+             <Download className="w-4 h-4 mr-2" /> Exportar CSV
+          </Button>
         </div>
 
-        {/* BARRA DE BUSCA (Adaptativa) */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-           <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+        {/* Filtros */}
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row gap-4 shadow-sm">
+           <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input 
-                placeholder="Buscar por ação (ex: ARQUIVAMENTO), autor ou alvo..." 
-                className="pl-10 h-12 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 focus:border-purple-500 transition-colors"
+                placeholder="Buscar por nome, alvo ou detalhe..." 
+                className="pl-10 h-11"
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
               />
            </div>
+           
+           <Select value={filtroAcao} onValueChange={setFiltroAcao}>
+              <SelectTrigger className="w-full md:w-[200px] h-11">
+                 <div className="flex items-center">
+                    <Filter className="w-4 h-4 mr-2 text-slate-500" />
+                    <SelectValue placeholder="Tipo de Ação" />
+                 </div>
+              </SelectTrigger>
+              <SelectContent>
+                 <SelectItem value="todos">Todas Ações</SelectItem>
+                 <SelectItem value="LOGIN">Acesso (Login)</SelectItem>
+                 <SelectItem value="CADASTRO">Novos Registros</SelectItem>
+                 <SelectItem value="EDICAO">Alterações</SelectItem>
+                 <SelectItem value="PAUSA">Pausas de Produção</SelectItem>
+                 <SelectItem value="EXCLUSAO">Exclusões</SelectItem>
+              </SelectContent>
+           </Select>
         </div>
 
-        {/* LISTA DE LOGS */}
-        <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-           <CardHeader className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 py-4">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-500">Linha do Tempo</CardTitle>
+        {/* Tabela de Logs */}
+        <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+           <CardHeader>
+               <CardTitle>Histórico de Eventos</CardTitle>
            </CardHeader>
            <CardContent className="p-0">
-              {loading ? (
-                 <div className="p-6 space-y-4">
-                    {[1,2,3,4].map(i => <Skeleton key={i} className="h-16 w-full rounded-xl bg-slate-100 dark:bg-slate-800" />)}
-                 </div>
-              ) : (
-                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {logsFiltrados.length === 0 ? (
-                       <div className="p-12 text-center text-slate-400 flex flex-col items-center">
-                          <FileText className="w-12 h-12 mb-2 opacity-20" />
-                          <p>Nenhum registro encontrado.</p>
-                       </div>
-                    ) : (
-                       logsFiltrados.map((log) => (
-                          <div key={log.id} className="p-4 flex flex-col md:flex-row md:items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
-                             
-                             {/* DATA E HORA */}
-                             <div className="flex flex-row md:flex-col items-center md:items-start gap-2 md:gap-0 min-w-[100px]">
-                                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                                   {new Date(log.created_at).toLocaleDateString('pt-BR')}
-                                </span>
-                                <span className="text-xs text-slate-400 font-mono hidden md:block">
-                                   {new Date(log.created_at).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}
-                                </span>
-                             </div>
-
-                             {/* ÍCONE DA AÇÃO (Colorido e Adaptativo) */}
-                             <div className={`p-3 rounded-xl shrink-0 transition-colors ${
-                                log.acao === 'ARQUIVAMENTO' ? 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400' :
-                                log.acao === 'EDICAO' ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' :
-                                'bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                             }`}>
-                                {log.acao === 'ARQUIVAMENTO' ? <ShieldAlert className="w-5 h-5"/> : <Clock className="w-5 h-5"/>}
-                             </div>
-
-                             {/* DETALHES */}
-                             <div className="flex-1 min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    {/* BADGE DE AÇÃO HARMONIZADO */}
-                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded border uppercase tracking-wide ${
-                                        log.acao === 'ARQUIVAMENTO' ? 'border-red-200 text-red-700 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400' :
-                                        log.acao === 'EDICAO' ? 'border-amber-200 text-amber-700 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-400' :
-                                        'border-blue-200 text-blue-700 bg-blue-50 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-400'
-                                    }`}>
-                                        {log.acao}
-                                    </span>
-                                    <span className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                                       {log.alvo}
-                                    </span>
-                                </div>
-                                
-                                <div className="flex items-center gap-2 mt-1.5">
-                                   <Avatar className="w-4 h-4">
-                                      <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${log.autor?.nome || 'S'}`} />
-                                      <AvatarFallback className="text-[9px]">U</AvatarFallback>
-                                   </Avatar>
-                                   <p className="text-xs text-slate-500">
-                                      Feito por: <span className="font-bold text-slate-700 dark:text-slate-300">{log.autor?.nome || 'Sistema'}</span>
-                                   </p>
-                                </div>
-                             </div>
-                             
-                             {/* ID DO LOG */}
-                             <Badge variant="outline" className="font-mono text-[10px] text-slate-400 border-slate-200 dark:border-slate-800 hidden md:flex">
-                                LOG-{log.id.slice(0,8)}
-                             </Badge>
-                          </div>
-                       ))
-                    )}
-                 </div>
-              )}
+               {loading ? (
+                   <div className="p-8 space-y-4">
+                       {[1,2,3,4].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+                   </div>
+               ) : (
+                   <div className="rounded-md border-t border-slate-100 dark:border-slate-800">
+                       <Table>
+                           <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
+                               <TableRow>
+                                   <TableHead>Ação</TableHead>
+                                   <TableHead>Responsável</TableHead>
+                                   <TableHead>Alvo / Contexto</TableHead>
+                                   <TableHead>Data</TableHead>
+                                   <TableHead className="text-right">Detalhes</TableHead>
+                               </TableRow>
+                           </TableHeader>
+                           <TableBody>
+                               {logsFiltrados.length === 0 ? (
+                                   <TableRow>
+                                       <TableCell colSpan={5} className="text-center py-10 text-slate-400">
+                                           Nenhum registro encontrado.
+                                       </TableCell>
+                                   </TableRow>
+                               ) : (
+                                   logsFiltrados.map((log) => {
+                                       const style = getActionStyle(log.acao);
+                                       const Icon = style.icon;
+                                       
+                                       return (
+                                           <TableRow key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                               <TableCell>
+                                                   <div className="flex items-center gap-3">
+                                                       <div className={`p-2 rounded-lg ${style.bg} ${style.color}`}>
+                                                           <Icon className="w-4 h-4" />
+                                                       </div>
+                                                       <span className="font-bold text-xs uppercase tracking-wide text-slate-700 dark:text-slate-300">
+                                                           {log.acao}
+                                                       </span>
+                                                   </div>
+                                               </TableCell>
+                                               <TableCell>
+                                                   <div className="flex flex-col">
+                                                       <span className="font-medium text-slate-900 dark:text-white">
+                                                           {log.autor?.nome || 'Sistema'}
+                                                       </span>
+                                                       <span className="text-[10px] text-slate-500 uppercase font-bold">
+                                                           {log.autor?.cargo || 'Automático'}
+                                                       </span>
+                                                   </div>
+                                               </TableCell>
+                                               <TableCell>
+                                                   <Badge variant="outline" className="font-mono text-xs text-slate-600 dark:text-slate-400">
+                                                       {log.alvo}
+                                                   </Badge>
+                                               </TableCell>
+                                               <TableCell>
+                                                   <div className="flex flex-col text-sm text-slate-500">
+                                                       <span>{format(new Date(log.created_at), "dd/MM/yyyy")}</span>
+                                                       <span className="text-xs opacity-70">
+                                                           {format(new Date(log.created_at), "HH:mm:ss")}
+                                                       </span>
+                                                   </div>
+                                               </TableCell>
+                                               <TableCell className="text-right">
+                                                   <Dialog>
+                                                       <DialogTrigger asChild>
+                                                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                                               <FileJson className="w-4 h-4 text-slate-400 hover:text-blue-500" />
+                                                           </Button>
+                                                       </DialogTrigger>
+                                                       <DialogContent className="max-w-xl">
+                                                           <DialogHeader>
+                                                               <DialogTitle className="flex items-center gap-2">
+                                                                   <FileJson className="w-5 h-5" /> Payload do Evento
+                                                               </DialogTitle>
+                                                           </DialogHeader>
+                                                           <div className="bg-slate-950 text-slate-50 p-4 rounded-lg font-mono text-xs overflow-auto max-h-[400px]">
+                                                               <pre>{JSON.stringify(log.detalhes, null, 2)}</pre>
+                                                           </div>
+                                                           <div className="text-xs text-slate-500 mt-2">
+                                                               ID do Log: {log.id}
+                                                           </div>
+                                                       </DialogContent>
+                                                   </Dialog>
+                                               </TableCell>
+                                           </TableRow>
+                                       );
+                                   })
+                               )}
+                           </TableBody>
+                       </Table>
+                   </div>
+               )}
            </CardContent>
         </Card>
       </div>

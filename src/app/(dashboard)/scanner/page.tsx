@@ -5,46 +5,32 @@ import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { useZxing } from "react-zxing";
 import { 
-  ScanBarcode, ArrowRight, CheckCircle2, Loader2, Camera, XCircle, Hash, Factory, Wrench 
+  ScanBarcode, ArrowRight, CheckCircle2, Loader2, Camera, XCircle, Hash, PackagePlus, Box 
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { identificarModelo } from "@/lib/model-decoder"; // Importando a nova inteligência
 
-// --- LÓGICA DE DECODIFICAÇÃO VIN (SHINERAY) ---
-const decodificarChassiShineray = (vin: string) => {
-  if (!vin || vin.length !== 17) return null;
+// --- HELPER: Extração de Ano e Fábrica (Padrão VIN) ---
+// O identificarModelo cuida do Nome, este cuida dos metadados
+const extrairMetadadosVIN = (vin: string) => {
+  if (!vin || vin.length < 10) return { ano: '2026', fabrica: 'Shineray BR' };
 
-  const vds = vin.substring(3, 9); // Modelo
-  const anoCode = vin.charAt(9);   // Ano
-  const fabricaCode = vin.charAt(10); // Fábrica
+  const anoCode = vin.charAt(9);
+  const fabricaCode = vin.charAt(10);
 
-  // Decodificação de Ano
   const tabelaAno: Record<string, string> = {
     'R': '2024', 'S': '2025', 'T': '2026', 'V': '2027', 'W': '2028',
     'X': '2029', 'Y': '2030', '1': '2031'
   };
-  const ano = tabelaAno[anoCode] || "Desconhecido";
+  
+  const ano = tabelaAno[anoCode] || "2026"; // Default para T
+  const fabrica = fabricaCode === 'S' ? 'Suape (PE)' : 'Importado';
 
-  // Identificação de Modelo
-  let modeloNome = "Modelo Novo / Genérico";
-  let linhaSugerida = "Linha Geral";
-
-  if (vds.includes("175")) { modeloNome = "SHI 175 EFI"; linhaSugerida = "Linha Trail (A)"; }
-  else if (vds.includes("50")) { modeloNome = "Phoenix 50"; linhaSugerida = "Linha CUB (B)"; }
-  else if (vds.includes("125")) { modeloNome = "Worker 125"; linhaSugerida = "Linha Street (C)"; }
-  else if (vds.includes("XY")) { modeloNome = "XY 50"; linhaSugerida = "Linha CUB (B)"; }
-
-  return {
-    wmi: vin.substring(0, 3),
-    vds,
-    ano,
-    fabrica: fabricaCode === 'S' ? 'Suape (PE)' : 'Importado',
-    modeloEstimado: modeloNome,
-    linhaSugerida
-  };
+  return { ano, fabrica };
 };
 
 export default function ScannerPage() {
@@ -54,6 +40,7 @@ export default function ScannerPage() {
   const [cameraAtiva, setCameraAtiva] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Configuração da Câmera (Zxing)
   const { ref } = useZxing({
     paused: !cameraAtiva,
     onResult(result) {
@@ -62,9 +49,12 @@ export default function ScannerPage() {
       setCameraAtiva(false);
       processarChassi(lido);
     },
-    onError() {}
+    onError() { 
+        // Silently ignore errors during scanning frames
+    }
   });
 
+  // Foco automático no input quando a câmera fecha
   useEffect(() => {
     if (!cameraAtiva) inputRef.current?.focus();
   }, [cameraAtiva, loading, ultimoRegistro]);
@@ -72,9 +62,9 @@ export default function ScannerPage() {
   const processarChassi = async (chassiLido: string) => {
     const chassi = chassiLido.toUpperCase().trim();
 
-    // 1. Validação
-    if (chassi.length !== 17) {
-      toast.warning("Código inválido! O VIN deve ter 17 caracteres.");
+    // Validação Básica
+    if (chassi.length < 9) { // Aceita VIN ou SKU curto se configurado
+      toast.warning("Código inválido: Muito curto.");
       return;
     }
 
@@ -82,37 +72,36 @@ export default function ScannerPage() {
     setUltimoRegistro(null);
 
     try {
-      // 2. Decodificação
-      const dadosVIN = decodificarChassiShineray(chassi);
-      if (!dadosVIN) throw new Error("Erro na decodificação do VIN");
+      // 1. Decodificação Inteligente (Novo Model Decoder)
+      const modeloIdentificado = identificarModelo(chassi);
+      const metadados = extrairMetadadosVIN(chassi);
 
-      // 3. Verificação de Duplicidade
+      // 2. Verifica Duplicidade no Supabase
       const { data: existente } = await supabase
         .from('motos')
-        .select('id, status')
+        .select('id, status, modelo')
         .eq('sku', chassi)
         .maybeSingle();
 
       if (existente) {
-        toast.error(`ERRO: Este chassi já está registrado (Status: ${existente.status})`);
+        toast.error(`Moto já registrada!`, {
+            description: `Modelo: ${existente.modelo} | Status: ${existente.status.toUpperCase()}`
+        });
         setLoading(false);
         setCodigo("");
         return;
       }
 
-      // 4. Registro no Banco (CORRIGIDO: VAI PARA MONTAGEM)
-      const userStr = localStorage.getItem('sgm_user');
-      const user = userStr ? JSON.parse(userStr) : null;
-
+      // 3. Registro na Fila
       const { data: novaMoto, error: erroInsert } = await supabase
         .from('motos')
         .insert({
           sku: chassi,
-          modelo: dadosVIN.modeloEstimado,
-          ano: dadosVIN.ano,
-          localizacao: 'Fila de Montagem', // Local físico atual
-          status: 'montagem', // <--- STATUS CORRIGIDO: Inicia o fluxo
-          montador_id: null, // Ainda não tem montador (está na fila)
+          modelo: modeloIdentificado,
+          ano: metadados.ano,
+          localizacao: 'Recebimento / CD', 
+          status: 'aguardando_montagem',
+          montador_id: null,
           created_at: new Date().toISOString()
         })
         .select()
@@ -120,19 +109,26 @@ export default function ScannerPage() {
 
       if (erroInsert) throw erroInsert;
 
-      // 5. Sucesso e Feedback Visual
+      // 4. Feedback Visual
       setUltimoRegistro({
         ...novaMoto,
-        linha_destino: dadosVIN.linhaSugerida,
+        fabrica: metadados.fabrica,
+        // Lógica simples de linha baseada no modelo para preencher o visual
+        linha_destino: modeloIdentificado.includes('SCOOTER') ? 'Linha Scooter' : 
+                       modeloIdentificado.includes('ATV') ? 'Linha Off-Road' : 'Linha Geral',
       });
       
-      toast.success("Enviado para Fila de Montagem!");
+      toast.success("Entrada Registrada!", {
+        description: `${modeloIdentificado} enviada para montagem.`
+      });
+
+      // Efeito Sonoro (Opcional)
       const audio = new Audio('/beep.mp3'); 
       audio.play().catch(() => {});
 
-    } catch (err) {
-      console.error(err);
-      toast.error("Erro ao registrar entrada.");
+    } catch (err: any) {
+      console.error("Erro scanner:", err);
+      toast.error("Erro ao registrar entrada."); 
     } finally {
       setLoading(false);
       setCodigo("");
@@ -145,36 +141,37 @@ export default function ScannerPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={['gestor', 'master', 'mecanico']}>
+    <RoleGuard allowedRoles={['montador', 'supervisor', 'gestor', 'master']}>
       <div className="h-[calc(100vh-100px)] p-4 max-w-7xl mx-auto flex flex-col animate-in fade-in duration-500">
         
-        {/* Header */}
+        {/* CABEÇALHO */}
         <div className="flex justify-between items-end mb-6 border-b border-slate-200 dark:border-slate-800 pb-4">
           <div>
             <h1 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-              <ScanBarcode className="w-8 h-8 text-blue-600" />
-              ENTRADA DE CHASSI
+              <PackagePlus className="w-8 h-8 text-blue-600" />
+              RECEBIMENTO DE CAIXAS
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Inicia o ciclo de produção. O veículo entrará na fila de <strong>Montagem</strong>.
+              Bipagem de entrada no CD. Motos ficarão <strong className="text-blue-500">Aguardando Montagem</strong>.
             </p>
           </div>
           <Badge variant={cameraAtiva ? "destructive" : "outline"} className="animate-pulse">
-            {cameraAtiva ? "CÂMERA ATIVA ●" : "AGUARDANDO LEITURA"}
+            {cameraAtiva ? "LENDO..." : "AGUARDANDO"}
           </Badge>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
           
-          {/* LADO ESQUERDO: INPUT */}
+          {/* ESQUERDA: CÂMERA E INPUT */}
           <div className="lg:col-span-5 flex flex-col gap-4">
+            {/* Box da Câmera */}
             <Card className="overflow-hidden border-2 border-slate-200 dark:border-slate-800 bg-black relative aspect-video lg:aspect-square flex items-center justify-center shadow-inner rounded-2xl">
                {cameraAtiva ? (
                  <>
                    <video ref={ref} className="w-full h-full object-cover" />
                    <div className="absolute inset-0 border-2 border-blue-500/50 m-12 rounded-lg pointer-events-none flex flex-col items-center justify-center">
                       <div className="w-full h-0.5 bg-blue-500/80 animate-pulse mb-2 shadow-[0_0_10px_#3b82f6]"></div>
-                      <span className="text-[10px] text-blue-500 font-mono bg-black/60 px-2 rounded">SCANNER ATIVO</span>
+                      <span className="text-[10px] text-blue-500 font-mono bg-black/60 px-2 rounded">MIRA ATIVA</span>
                    </div>
                    <Button variant="destructive" size="icon" className="absolute top-4 right-4 rounded-full" onClick={() => setCameraAtiva(false)}>
                       <XCircle className="w-6 h-6" />
@@ -186,21 +183,22 @@ export default function ScannerPage() {
                        <Camera className="w-10 h-10" />
                     </div>
                     <div>
-                      <h3 className="text-white font-bold text-lg">Scanner de Câmera</h3>
-                      <p className="text-slate-500 text-xs uppercase tracking-wide">Para tablets e celulares</p>
+                      <h3 className="text-white font-bold text-lg">Câmera / Tablet</h3>
+                      <p className="text-slate-500 text-xs uppercase tracking-wide">Para bipagem móvel</p>
                     </div>
-                    <Button onClick={() => setCameraAtiva(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-8 h-12 rounded-full font-bold shadow-lg shadow-blue-900/20 w-full">
-                      ATIVAR CÂMERA
+                    <Button onClick={() => setCameraAtiva(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-8 h-12 rounded-full font-bold w-full">
+                      ATIVAR
                     </Button>
                  </div>
                )}
             </Card>
 
+            {/* Box do Input Manual */}
             <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1">
-                      <Hash className="w-3 h-3" /> Digitação / Leitor USB
+                      <Hash className="w-3 h-3" /> Pistola USB / Manual
                   </p>
                   {loading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
                 </div>
@@ -209,12 +207,12 @@ export default function ScannerPage() {
                     ref={inputRef}
                     value={codigo}
                     onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-                    placeholder="99H..."
+                    placeholder="Chassi ou SKU..."
                     className="font-mono uppercase tracking-widest text-lg h-12 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 focus:border-blue-500"
                     disabled={loading || cameraAtiva}
                     maxLength={17}
                   />
-                  <Button type="submit" disabled={loading || codigo.length < 17} className="h-12 w-16 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800">
+                  <Button type="submit" disabled={loading || codigo.length < 5} className="h-12 w-16 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800">
                     <ArrowRight />
                   </Button>
                 </form>
@@ -222,21 +220,21 @@ export default function ScannerPage() {
             </Card>
           </div>
 
-          {/* LADO DIREITO: RESULTADO / FEEDBACK */}
+          {/* DIREITA: FEEDBACK DO REGISTRO */}
           <div className="lg:col-span-7 h-full">
              {ultimoRegistro ? (
                 <Card className="h-full border-l-8 border-l-blue-500 bg-white dark:bg-slate-900 border-y border-r border-slate-200 dark:border-slate-800 shadow-xl relative overflow-hidden animate-in slide-in-from-right duration-500">
                    <div className="absolute -right-10 -bottom-10 opacity-5 pointer-events-none">
-                      <Factory className="w-80 h-80 text-blue-500" />
+                      <Box className="w-80 h-80 text-blue-500" />
                    </div>
                    
                    <CardContent className="p-8 flex flex-col h-full justify-center">
                       <div className="flex items-start justify-between mb-8">
                           <div>
                               <p className="text-sm font-bold text-blue-600 dark:text-blue-500 uppercase tracking-widest mb-1 flex items-center gap-2">
-                                  <CheckCircle2 className="w-5 h-5" /> Iniciado com Sucesso
+                                  <CheckCircle2 className="w-5 h-5" /> Adicionado à Fila
                               </p>
-                              <h2 className="text-4xl md:text-5xl font-black text-slate-900 dark:text-white leading-tight">
+                              <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white leading-tight">
                                   {ultimoRegistro.modelo}
                               </h2>
                           </div>
@@ -257,16 +255,14 @@ export default function ScannerPage() {
 
                           <div className="grid grid-cols-2 gap-4">
                               <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                                  <p className="text-xs text-slate-400 uppercase font-bold mb-1">Origem</p>
-                                  <p className="text-lg font-bold text-slate-800 dark:text-white">
-                                      {ultimoRegistro.localizacao}
-                                  </p>
+                                  <p className="text-xs text-slate-400 uppercase font-bold mb-1">Status</p>
+                                  <Badge className="bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/30">
+                                      AGUARDANDO
+                                  </Badge>
                               </div>
-                              <div className="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-200 dark:border-blue-900/30">
-                                  <p className="text-xs text-blue-500 uppercase font-bold mb-1 flex items-center gap-1">
-                                      <Wrench className="w-3 h-3" /> Próxima Etapa
-                                  </p>
-                                  <p className="text-lg font-black text-blue-700 dark:text-blue-400">
+                              <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                                  <p className="text-xs text-slate-400 uppercase font-bold mb-1">Destino Sugerido</p>
+                                  <p className="text-lg font-bold text-slate-800 dark:text-white">
                                       {ultimoRegistro.linha_destino}
                                   </p>
                               </div>
@@ -279,7 +275,7 @@ export default function ScannerPage() {
                             onClick={() => setUltimoRegistro(null)}
                             className="border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                           >
-                              Ler Próximo
+                              Ler Próxima Caixa
                           </Button>
                       </div>
                    </CardContent>
@@ -289,14 +285,10 @@ export default function ScannerPage() {
                    <div className="w-24 h-24 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 shadow-sm">
                       <ScanBarcode className="w-12 h-12 text-slate-300 dark:text-slate-600" />
                    </div>
-                   <h3 className="text-xl font-bold text-slate-700 dark:text-slate-300 mb-2">Pronto para Ler</h3>
+                   <h3 className="text-xl font-bold text-slate-700 dark:text-slate-300 mb-2">Pronto para Receber</h3>
                    <p className="text-slate-400 max-w-xs mx-auto mb-8">
-                      Aponte a câmera para o chassi. O sistema registrará e enviará para a <strong>Montagem</strong> automaticamente.
+                      Aponte para a etiqueta da caixa. O sistema registrará na fila de montagem automaticamente.
                    </p>
-                   <div className="flex gap-2">
-                       <Badge variant="secondary" className="bg-white dark:bg-slate-800">99H = Shineray</Badge>
-                       <Badge variant="secondary" className="bg-white dark:bg-slate-800">Anti-Duplicidade</Badge>
-                   </div>
                 </div>
              )}
           </div>
