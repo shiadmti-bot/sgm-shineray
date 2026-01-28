@@ -3,7 +3,16 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "sonner";
-import { CentralSolicitacoes } from "@/components/CentralSolicitacoes"; // <--- 1. Importação adicionada
+import { CentralSolicitacoes } from "@/components/CentralSolicitacoes";
+import type { Viewport } from 'next';
+
+export const viewport: Viewport = {
+  themeColor: '#2563eb', // Azul Shineray para a barra do navegador mobile
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1, // Impede zoom acidental em inputs no mobile (sensação de app nativo)
+  userScalable: false,
+};
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
