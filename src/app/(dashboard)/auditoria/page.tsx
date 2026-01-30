@@ -4,8 +4,9 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { 
-  ShieldAlert, Search, FileJson, Calendar, User, 
-  Filter, Download, AlertTriangle, CheckCircle2, Info, PlusCircle, Trash2, Edit
+  ShieldAlert, Search, FileJson, User, 
+  Filter, Download, AlertTriangle, CheckCircle2, Info, PlusCircle, Trash2, Edit,
+  Wrench, ScanBarcode, LogIn, LogOut, Printer
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,19 +18,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
+// Tipo alinhado com o banco atual
 type LogSistema = {
   id: string;
   acao: string;
-  alvo: string;
+  usuario: string; // Nome direto (snapshot)
+  referencia: string; // SKU ou ID
   detalhes: any; // JSONB
   created_at: string;
-  autor: {
-    nome: string;
-    cargo: string;
-    email: string;
-  } | null;
 };
 
 export default function AuditoriaPage() {
@@ -47,15 +44,15 @@ export default function AuditoriaPage() {
     
     let query = supabase
       .from('logs_sistema')
-      .select(`
-        *,
-        autor:funcionarios(nome, cargo, email)
-      `)
+      .select('*')
       .order('created_at', { ascending: false })
-      .limit(100); // Traz os últimos 100 para performance
+      .limit(100); 
 
     if (filtroAcao !== 'todos') {
-        query = query.eq('acao', filtroAcao);
+        // Filtro parcial para agrupar tipos (Ex: PAUSA pega SOLICITADA e APROVADA)
+        if (filtroAcao === 'PAUSA') query = query.ilike('acao', '%PAUSA%');
+        else if (filtroAcao === 'QA') query = query.ilike('acao', '%QA%');
+        else query = query.eq('acao', filtroAcao);
     }
 
     const { data, error } = await query;
@@ -68,38 +65,44 @@ export default function AuditoriaPage() {
     setLoading(false);
   }
 
-  // Filtragem local por texto (Nome ou Alvo)
   const logsFiltrados = logs.filter(log => 
-    log.autor?.nome.toLowerCase().includes(busca.toLowerCase()) ||
-    log.alvo.toLowerCase().includes(busca.toLowerCase()) ||
+    log.usuario?.toLowerCase().includes(busca.toLowerCase()) ||
+    log.referencia?.toLowerCase().includes(busca.toLowerCase()) ||
+    log.acao.toLowerCase().includes(busca.toLowerCase()) ||
     JSON.stringify(log.detalhes).toLowerCase().includes(busca.toLowerCase())
   );
 
-  // Helper de UI para Tipos de Ação
+  // Helper Visual Expandido (V2.0)
   const getActionStyle = (acao: string) => {
-      switch(acao) {
-          case 'LOGIN': return { icon: User, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' };
-          case 'CADASTRO': return { icon: PlusCircle, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20' };
-          case 'EDICAO': return { icon: Edit, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' };
-          case 'EXCLUSAO': return { icon: Trash2, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-900/20' };
-          case 'ARQUIVAMENTO': return { icon: Trash2, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-800' };
-          case 'PAUSA': return { icon: AlertTriangle, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-900/20' };
-          default: return { icon: Info, color: 'text-slate-500', bg: 'bg-slate-50 dark:bg-slate-800' };
-      }
+      if (acao.includes('LOGIN')) return { icon: LogIn, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/30' };
+      if (acao.includes('LOGOUT')) return { icon: LogOut, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-800' };
+      
+      if (acao.includes('CADASTRO') || acao.includes('ENTRADA')) return { icon: PlusCircle, color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900/30' };
+      if (acao.includes('EDICAO')) return { icon: Edit, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' };
+      if (acao.includes('EXCLUSAO')) return { icon: Trash2, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
+      
+      if (acao.includes('PAUSA')) return { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-900/30' };
+      
+      // Novos Fluxos V2.0
+      if (acao === 'APROVACAO_QA') return { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' };
+      if (acao.includes('REPROVACAO') || acao.includes('RETRABALHO')) return { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
+      if (acao.includes('REPARO')) return { icon: Wrench, color: 'text-indigo-600', bg: 'bg-indigo-100 dark:bg-indigo-900/30' };
+      if (acao === 'IMPRESSAO_ETIQUETA') return { icon: Printer, color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' };
+
+      return { icon: Info, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-800' };
   };
 
   const handleExportCSV = () => {
     if (logsFiltrados.length === 0) return toast.warning("Nada para exportar");
     
-    const headers = ["Data", "Hora", "Autor", "Cargo", "Ação", "Alvo", "Detalhes"];
+    const headers = ["Data", "Hora", "Usuário", "Ação", "Referência (SKU)", "Detalhes"];
     const rows = logsFiltrados.map(log => [
         new Date(log.created_at).toLocaleDateString(),
         new Date(log.created_at).toLocaleTimeString(),
-        log.autor?.nome || 'Sistema',
-        log.autor?.cargo || '-',
+        log.usuario,
         log.acao,
-        log.alvo,
-        JSON.stringify(log.detalhes).replace(/"/g, '""') // Escape quotes
+        log.referencia || '-',
+        JSON.stringify(log.detalhes).replace(/"/g, '""')
     ]);
 
     const csvContent = [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
@@ -120,12 +123,12 @@ export default function AuditoriaPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-               <ShieldAlert className="w-8 h-8 text-red-600" /> Auditoria
+               <ShieldAlert className="w-8 h-8 text-red-600" /> Auditoria de Eventos
             </h1>
-            <p className="text-slate-500">Rastreabilidade de segurança e ações sensíveis.</p>
+            <p className="text-slate-500">Registro imutável de todas as ações críticas do sistema.</p>
           </div>
           <Button variant="outline" onClick={handleExportCSV} className="border-slate-200 dark:border-slate-800">
-             <Download className="w-4 h-4 mr-2" /> Exportar CSV
+              <Download className="w-4 h-4 mr-2" /> Exportar CSV
           </Button>
         </div>
 
@@ -134,7 +137,7 @@ export default function AuditoriaPage() {
            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input 
-                placeholder="Buscar por nome, alvo ou detalhe..." 
+                placeholder="Buscar por usuário, SKU ou tipo de erro..." 
                 className="pl-10 h-11"
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
@@ -142,19 +145,18 @@ export default function AuditoriaPage() {
            </div>
            
            <Select value={filtroAcao} onValueChange={setFiltroAcao}>
-              <SelectTrigger className="w-full md:w-[200px] h-11">
+              <SelectTrigger className="w-full md:w-[220px] h-11">
                  <div className="flex items-center">
                     <Filter className="w-4 h-4 mr-2 text-slate-500" />
                     <SelectValue placeholder="Tipo de Ação" />
                  </div>
               </SelectTrigger>
               <SelectContent>
-                 <SelectItem value="todos">Todas Ações</SelectItem>
-                 <SelectItem value="LOGIN">Acesso (Login)</SelectItem>
-                 <SelectItem value="CADASTRO">Novos Registros</SelectItem>
-                 <SelectItem value="EDICAO">Alterações</SelectItem>
-                 <SelectItem value="PAUSA">Pausas de Produção</SelectItem>
-                 <SelectItem value="EXCLUSAO">Exclusões</SelectItem>
+                 <SelectItem value="todos">Todos Eventos</SelectItem>
+                 <SelectItem value="LOGIN">Acessos (Login)</SelectItem>
+                 <SelectItem value="PAUSA">Pausas de Linha</SelectItem>
+                 <SelectItem value="QA">Qualidade e Reparo</SelectItem>
+                 <SelectItem value="EXCLUSAO">Segurança (Exclusões)</SelectItem>
               </SelectContent>
            </Select>
         </div>
@@ -162,7 +164,7 @@ export default function AuditoriaPage() {
         {/* Tabela de Logs */}
         <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
            <CardHeader>
-               <CardTitle>Histórico de Eventos</CardTitle>
+               <CardTitle>Histórico Recente</CardTitle>
            </CardHeader>
            <CardContent className="p-0">
                {loading ? (
@@ -174,18 +176,18 @@ export default function AuditoriaPage() {
                        <Table>
                            <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
                                <TableRow>
-                                   <TableHead>Ação</TableHead>
-                                   <TableHead>Responsável</TableHead>
-                                   <TableHead>Alvo / Contexto</TableHead>
-                                   <TableHead>Data</TableHead>
-                                   <TableHead className="text-right">Detalhes</TableHead>
+                                   <TableHead>Evento</TableHead>
+                                   <TableHead>Usuário</TableHead>
+                                   <TableHead>Referência (SKU)</TableHead>
+                                   <TableHead>Data/Hora</TableHead>
+                                   <TableHead className="text-right">Metadados</TableHead>
                                </TableRow>
                            </TableHeader>
                            <TableBody>
                                {logsFiltrados.length === 0 ? (
                                    <TableRow>
                                        <TableCell colSpan={5} className="text-center py-10 text-slate-400">
-                                           Nenhum registro encontrado.
+                                           Nenhum registro encontrado com os filtros atuais.
                                        </TableCell>
                                    </TableRow>
                                ) : (
@@ -201,24 +203,23 @@ export default function AuditoriaPage() {
                                                            <Icon className="w-4 h-4" />
                                                        </div>
                                                        <span className="font-bold text-xs uppercase tracking-wide text-slate-700 dark:text-slate-300">
-                                                           {log.acao}
+                                                           {log.acao.replace('_', ' ')}
                                                        </span>
                                                    </div>
                                                </TableCell>
                                                <TableCell>
                                                    <div className="flex flex-col">
                                                        <span className="font-medium text-slate-900 dark:text-white">
-                                                           {log.autor?.nome || 'Sistema'}
-                                                       </span>
-                                                       <span className="text-[10px] text-slate-500 uppercase font-bold">
-                                                           {log.autor?.cargo || 'Automático'}
+                                                           {log.usuario}
                                                        </span>
                                                    </div>
                                                </TableCell>
                                                <TableCell>
-                                                   <Badge variant="outline" className="font-mono text-xs text-slate-600 dark:text-slate-400">
-                                                       {log.alvo}
-                                                   </Badge>
+                                                   {log.referencia ? (
+                                                       <Badge variant="outline" className="font-mono text-xs text-slate-600 dark:text-slate-400 flex w-fit items-center gap-1">
+                                                           <ScanBarcode className="w-3 h-3"/> {log.referencia}
+                                                       </Badge>
+                                                   ) : <span className="text-slate-400">-</span>}
                                                </TableCell>
                                                <TableCell>
                                                    <div className="flex flex-col text-sm text-slate-500">
@@ -235,17 +236,33 @@ export default function AuditoriaPage() {
                                                                <FileJson className="w-4 h-4 text-slate-400 hover:text-blue-500" />
                                                            </Button>
                                                        </DialogTrigger>
-                                                       <DialogContent className="max-w-xl">
+                                                       <DialogContent className="max-w-xl bg-white dark:bg-slate-900 border-slate-200">
                                                            <DialogHeader>
                                                                <DialogTitle className="flex items-center gap-2">
-                                                                   <FileJson className="w-5 h-5" /> Payload do Evento
+                                                                   <ShieldAlert className="w-5 h-5 text-red-500" /> Detalhes da Auditoria
                                                                </DialogTitle>
                                                            </DialogHeader>
-                                                           <div className="bg-slate-950 text-slate-50 p-4 rounded-lg font-mono text-xs overflow-auto max-h-[400px]">
-                                                               <pre>{JSON.stringify(log.detalhes, null, 2)}</pre>
-                                                           </div>
-                                                           <div className="text-xs text-slate-500 mt-2">
-                                                               ID do Log: {log.id}
+                                                           
+                                                           <div className="space-y-4">
+                                                               <div className="grid grid-cols-2 gap-4 text-sm">
+                                                                   <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded border">
+                                                                       <p className="text-xs font-bold uppercase text-slate-500">ID do Evento</p>
+                                                                       <p className="font-mono">{log.id}</p>
+                                                                   </div>
+                                                                   <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded border">
+                                                                       <p className="text-xs font-bold uppercase text-slate-500">Dispositivo</p>
+                                                                       <p className="truncate" title={log.detalhes?._meta?.userAgent}>
+                                                                           {log.detalhes?._meta?.userAgent || 'Não identificado'}
+                                                                       </p>
+                                                                   </div>
+                                                               </div>
+
+                                                               <div>
+                                                                   <p className="text-xs font-bold uppercase text-slate-500 mb-2">Payload Completo (JSON)</p>
+                                                                   <div className="bg-slate-950 text-slate-50 p-4 rounded-lg font-mono text-xs overflow-auto max-h-[300px] border border-slate-800">
+                                                                       <pre>{JSON.stringify(log.detalhes, null, 2)}</pre>
+                                                                   </div>
+                                                               </div>
                                                            </div>
                                                        </DialogContent>
                                                    </Dialog>

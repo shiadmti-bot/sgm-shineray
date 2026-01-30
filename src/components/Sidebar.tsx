@@ -7,8 +7,8 @@ import { useTheme } from "next-themes";
 import { useState, useEffect } from "react";
 import { 
   LayoutDashboard, ScanBarcode, Wrench, ClipboardCheck, 
-  PackageSearch, LogOut, Moon, Sun, Users,
-  ShieldAlert, BarChart3, ChevronRight
+  Warehouse, LogOut, Moon, Sun, Users,
+  ShieldAlert, BarChart3, ChevronRight, Printer, AlertOctagon, Tag
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -24,7 +24,7 @@ interface UserData {
   matricula?: string;
 }
 
-// 1. Definição Estratégica de Menus V2.0
+// 1. Definição Estratégica de Menus V2.2 (Fluxo Completo)
 const menuItems = [
   { 
     href: "/dashboard", 
@@ -53,13 +53,25 @@ const menuItems = [
   { 
     href: "/qualidade", 
     icon: ClipboardCheck, 
-    label: "Qualidade & QA", 
+    label: "Inspeção de Qualidade", 
     roles: ["gestor", "supervisor", "master"] 
   },
   { 
+    href: "/avarias", 
+    icon: AlertOctagon, 
+    label: "Pátio de Avarias", 
+    roles: ["gestor", "supervisor", "master"] 
+  },
+  { 
+    href: "/etiquetagem", 
+    icon: Tag, 
+    label: "Etiquetagem", 
+    roles: ["gestor", "supervisor", "master", "montador"] 
+  },
+  { 
     href: "/estoque", 
-    icon: PackageSearch, 
-    label: "Estoque & Pátio", 
+    icon: Warehouse, 
+    label: "Estoque & Expedição", 
     roles: ["gestor", "supervisor", "master"] 
   },
   { 
@@ -70,9 +82,9 @@ const menuItems = [
   },
   { 
     href: "/auditoria", 
-    icon: ShieldAlert,
+    icon: ShieldAlert, 
     label: "Auditoria", 
-    roles: ["master"] // Área Restrita
+    roles: ["master"] 
   },
 ];
 
@@ -80,8 +92,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
   const { setTheme, theme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  
-  // Estado do Usuário
   const [userData, setUserData] = useState<UserData | null>(null);
 
   useEffect(() => {
@@ -92,7 +102,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
     }
   }, []);
 
-  // 2. Filtro de Segurança
   const filteredMenu = menuItems.filter(item => 
     userData ? item.roles.includes(userData.cargo) : false
   );
@@ -100,20 +109,19 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   return (
     <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-950/50 backdrop-blur-xl border-r border-slate-200 dark:border-slate-800 transition-all duration-300">
       
-      {/* HEADER / LOGO */}
+      {/* HEADER */}
       <div className="flex flex-col items-center justify-center pt-8 pb-6">
-        {/* ALTERAÇÃO AQUI: Removido o container com bg-white, shadow, border e o efeito de brilho */}
         <div className="relative w-24 h-20">
             <Image 
                 src="/shineray-logo.png" 
                 alt="Shineray" 
                 fill
+                sizes="(max-width: 768px) 100vw, 96px"
                 className="object-contain"
                 priority
             />
         </div>
 
-        {/* Badge de Cargo (Animado e Colorido conforme Login) */}
         <AnimatePresence>
             {mounted && userData && (
             <motion.div 
@@ -124,7 +132,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                   userData.cargo === 'master' ? "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800" :
                   userData.cargo === 'gestor' ? "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800" :
                   userData.cargo === 'supervisor' ? "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800" :
-                  "bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700" // Montador
+                  "bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700" 
                 )}
             >
                 {userData.cargo}
@@ -174,7 +182,6 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
             );
           })
         ) : (
-          // Skeleton Loading enquanto monta
           <div className="space-y-3 px-2">
              {[1,2,3,4,5].map(i => (
                 <div key={i} className="h-12 bg-slate-200/50 dark:bg-slate-800/50 rounded-xl animate-pulse" />
@@ -183,10 +190,8 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         )}
       </nav>
 
-      {/* FOOTER & PERFIL */}
+      {/* FOOTER */}
       <div className="p-4 mt-auto">
-        
-        {/* Card do Usuário Logado */}
         {mounted && userData && (
             <div className="mb-4 flex items-center gap-3 p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:shadow-md">
                 <Avatar className="h-10 w-10 border-2 border-slate-100 dark:border-slate-800">
@@ -198,7 +203,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                         {userData.nome.split(' ')[0]}
                     </p>
                     <p className="text-[10px] text-slate-500 truncate mt-1 font-mono">
-                        {userData.email || (userData.matricula ? `Matrícula: ${userData.matricula}` : '')}
+                        {userData.email || (userData.matricula ? `ID: ${userData.matricula}` : '')}
                     </p>
                 </div>
                 <Button 
@@ -210,14 +215,13 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                         localStorage.removeItem('sgm_remember_email');
                         window.location.href = "/login";
                     }}
-                    title="Sair do Sistema"
+                    title="Sair"
                 >
                     <LogOut className="w-4 h-4" />
                 </Button>
             </div>
         )}
 
-        {/* Toggle Tema */}
         <Button 
           variant="outline" 
           className="w-full justify-center gap-2 h-9 text-xs border-slate-200 dark:border-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800"

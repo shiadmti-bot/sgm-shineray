@@ -1,62 +1,76 @@
 import { supabase } from "./supabase";
 
-// 1. Expansão dos Tipos de Ação para cobrir todo o fluxo V2.0
+// 1. Definição Completa dos Tipos de Ação (V2.1 - Atualizado)
 export type AcaoLog = 
+  // Acesso
   | 'LOGIN' 
   | 'LOGOUT' 
+  // Gestão de Dados
   | 'CADASTRO' 
   | 'EDICAO' 
-  | 'EXCLUSAO'           // ou ARQUIVAMENTO
-  | 'ENTRADA_ESTOQUE'    // Bipagem inicial
+  | 'EXCLUSAO' 
+  // Fluxo de Entrada
+  | 'ENTRADA_ESTOQUE'      
+  // Fluxo de Montagem
   | 'INICIO_MONTAGEM' 
-  | 'PAUSA_MONTAGEM' 
-  | 'FIM_MONTAGEM' 
-  | 'APROVACAO_QA' 
-  | 'REPROVACAO_QA'      // Defeito de Fábrica
-  | 'RETRABALHO_QA'      // Erro do Montador
-  | 'RETORNO_REPARO'     // Volta da oficina
-  | 'IMPRESSAO_ETIQUETA';
+  | 'PAUSA_SOLICITADA'     
+  | 'PAUSA_APROVADA'       
+  | 'PAUSA_REJEITADA'      
+  | 'FIM_MONTAGEM'         
+  | 'PRODUCAO_FIM'         
+  // Fluxo de Qualidade e Oficina
+  | 'APROVACAO_QA'         
+  | 'REPROVACAO_QA'        
+  | 'RETRABALHO_QA'        
+  | 'REPARO_OFICINA'       
+  | 'RETORNO_REPARO'       
+  // Logística Final (NOVO)
+  | 'IMPRESSAO_ETIQUETA'
+  | 'SAIDA_ESTOQUE'; // <--- ADICIONADO AQUI
 
-// 2. Interfaces para forçar estrutura nos detalhes (Opcional, mas recomendado)
-interface DetalhesBase {
-  motivo?: string;
-  obs?: string;
+// 2. Interface para padronizar detalhes
+interface DetalhesLog {
+  [key: string]: any;
 }
 
 export async function registrarLog(
   acao: AcaoLog, 
-  alvo: string, 
-  detalhes: Record<string, any> = {}
+  referencia: string, // SKU da moto, ID do funcionário ou 'Sistema'
+  detalhes: DetalhesLog = {}
 ) {
-  // Recupera usuário
+  // Recupera usuário da sessão local
   const userStr = localStorage.getItem('sgm_user');
   const user = userStr ? JSON.parse(userStr) : null;
 
-  if (!user) return; 
+  const usuarioNome = user?.nome || 'Sistema / Desconhecido';
+  const usuarioId = user?.id || null;
 
-  // 3. Captura Metadados do Ambiente (Crucial para auditoria física)
-  const metaDados = {
-    userAgent: window.navigator.userAgent, // Identifica se é Tablet/PC/Celular
-    timestamp_local: new Date().toString(),
-    url_origem: window.location.pathname
-  };
+  // 3. Captura Metadados
+  const metaDados = typeof window !== 'undefined' ? {
+    userAgent: window.navigator.userAgent,
+    url_origem: window.location.pathname,
+    timestamp_device: new Date().toISOString()
+  } : { origem: 'server-side' };
 
-  // 4. Mescla os detalhes do negócio com os metadados técnicos
+  // 4. Mescla os detalhes
   const payloadFinal = {
     ...detalhes,
-    _meta: metaDados
+    _meta: metaDados,
+    autor_id_ref: usuarioId 
   };
 
   try {
-    // Fire-and-forget (Não usamos await para não travar a UI do usuário)
-    supabase.from('logs_sistema').insert({
-      autor_id: user.id,
+    const { error } = await supabase.from('logs_sistema').insert({
       acao,
-      alvo, 
-      detalhes: payloadFinal
-    }).then(({ error }) => {
-      if (error) console.error("Erro ao salvar log no banco:", error);
+      usuario: usuarioNome,
+      referencia: referencia,
+      detalhes: JSON.stringify(payloadFinal),
+      created_at: new Date().toISOString()
     });
+
+    if (error) {
+      console.error("Erro silencioso ao salvar log:", error.message);
+    }
 
   } catch (error) {
     console.error("Falha crítica no logger:", error);

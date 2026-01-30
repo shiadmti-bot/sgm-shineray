@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { 
-  ClipboardCheck, CheckCircle2, AlertTriangle, User, RotateCcw, AlertOctagon, ArrowRight, PauseCircle, Timer, Wrench
+  ClipboardCheck, CheckCircle2, AlertTriangle, User, RotateCcw, AlertOctagon, 
+  Wrench, PaintBucket, Armchair, ScanBarcode, Clock, Calendar, Timer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,59 +18,53 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { registrarLog } from "@/lib/logger";
 
-const calcularPerformance = (inicio: string, fim: string) => {
-    if(!inicio || !fim) return "N/A";
-    const diff = new Date(fim).getTime() - new Date(inicio).getTime();
-    const minutos = Math.floor(diff / 60000); 
-    const segundos = Math.floor((diff % 60000) / 1000);
-    return `${minutos}m ${segundos}s`;
-}
+// Helper para calcular duração
+const calcularDuracao = (inicio: string, fim: string) => {
+    if (!inicio || !fim) return "N/A";
+    const start = new Date(inicio).getTime();
+    const end = new Date(fim).getTime();
+    const diffMs = end - start;
+    const diffMins = Math.floor(diffMs / 60000);
+    return `${diffMins} min`;
+};
 
 export default function QualidadePage() {
   const [loading, setLoading] = useState(true);
   const [listaAnalise, setListaAnalise] = useState<any[]>([]);
   const [listaReparo, setListaReparo] = useState<any[]>([]);
   
-  const [modalOpen, setModalOpen] = useState(false);
+  // Modais
+  const [modalDecisaoOpen, setModalDecisaoOpen] = useState(false);
+  const [modalReparoOpen, setModalReparoOpen] = useState(false);
+
+  // Estados
   const [acaoDecisao, setAcaoDecisao] = useState<'retrabalho' | 'avaria' | null>(null);
   const [motoSelecionada, setMotoSelecionada] = useState<any>(null);
-  
   const [tipoAvaria, setTipoAvaria] = useState("");
-  const [observacao, setObservacao] = useState("");
+  const [observacaoQA, setObservacaoQA] = useState("");
+  const [nomeTecnico, setNomeTecnico] = useState("");
+  const [observacaoReparo, setObservacaoReparo] = useState("");
 
   useEffect(() => {
     fetchMotos();
-    const interval = setInterval(fetchMotos, 15000);
+    const interval = setInterval(fetchMotos, 10000);
     return () => clearInterval(interval);
   }, []);
 
   async function fetchMotos() {
     setLoading(true);
     
-    // Agora buscamos também o 'rework_count'
-    const { data: analise, error: err1 } = await supabase
+    const { data: analise } = await supabase
       .from('motos')
-      .select(`
-        *,
-        montador:funcionarios!motos_montador_id_fkey(nome),
-        pausas:pausas_producao(id) 
-      `)
+      .select(`*, montador:funcionarios!motos_montador_id_fkey(nome)`)
       .eq('status', 'em_analise')
       .order('fim_montagem', { ascending: true });
 
-    if (err1) console.error("Erro busca análise:", err1);
-
-    const { data: reparo, error: err2 } = await supabase
+    const { data: reparo } = await supabase
       .from('motos')
-      .select(`
-        *,
-        montador:funcionarios!motos_montador_id_fkey(nome),
-        supervisor:funcionarios!motos_supervisor_id_fkey(nome)
-      `)
-      .in('status', ['avaria_mecanica', 'avaria_pintura', 'avaria_estrutura', 'avaria_pecas'])
+      .select(`*, montador:funcionarios!motos_montador_id_fkey(nome)`)
+      .like('status', 'avaria_%')
       .order('updated_at', { ascending: false });
-
-    if (err2) console.error("Erro busca reparo:", err2);
 
     if (analise) setListaAnalise(analise);
     if (reparo) setListaReparo(reparo);
@@ -77,189 +72,231 @@ export default function QualidadePage() {
   }
 
   const handleAprovar = async (moto: any) => {
-    const userStr = localStorage.getItem('sgm_user');
-    const user = userStr ? JSON.parse(userStr) : null;
+    if (!confirm(`Aprovar ${moto.modelo}?`)) return;
+    const user = JSON.parse(localStorage.getItem('sgm_user') || '{}');
 
-    if (!confirm(`Confirmar aprovação da moto ${moto.sku}?`)) return;
-
-    const { error } = await supabase
-      .from('motos')
-      .update({
+    const { error } = await supabase.from('motos').update({
         status: 'aprovado',
-        supervisor_id: user?.id, 
+        supervisor_id: user.id,
+        localizacao: 'Pátio de Estoque',
         updated_at: new Date().toISOString()
-      })
-      .eq('id', moto.id);
+    }).eq('id', moto.id);
 
-    if (error) {
-        toast.error("Erro ao aprovar.");
-    } else {
-      toast.success("Moto Aprovada e Assinada!");
-      await registrarLog('APROVACAO_QA', moto.sku, { 
-          supervisor: user?.nome, 
-          montador_origem: moto.montador?.nome 
-      });
-      fetchMotos();
-    }
-  };
-
-  const abrirModal = (moto: any, tipo: 'retrabalho' | 'avaria') => {
-    setMotoSelecionada(moto);
-    setAcaoDecisao(tipo);
-    setTipoAvaria(""); 
-    setObservacao(""); 
-    setModalOpen(true);
-  };
-
-  const handleConfirmarDecisao = async () => {
-    const userStr = localStorage.getItem('sgm_user');
-    const user = userStr ? JSON.parse(userStr) : null;
-    
-    if (!observacao) return toast.warning("Descreva o problema obrigatóriamente.");
-
-    let payload: any = {
-        supervisor_id: user?.id,
-        updated_at: new Date().toISOString()
-    };
-
-    if (acaoDecisao === 'retrabalho') {
-        payload.status = 'retrabalho_montagem';
-        payload.observacoes = `RETRABALHO (Por ${user?.nome.split(' ')[0]}): ${observacao}`;
-        // LÓGICA DE INCREMENTO DE RETRABALHO
-        const currentCount = motoSelecionada.rework_count || 0;
-        payload.rework_count = currentCount + 1; // Incrementa +1
-    } else {
-        if (!tipoAvaria) return toast.warning("Selecione o tipo de avaria.");
-        payload.status = tipoAvaria;
-        payload.detalhes_avaria = observacao;
-    }
-
-    const { error } = await supabase
-      .from('motos')
-      .update(payload)
-      .eq('id', motoSelecionada.id);
-
-    if (error) {
-        toast.error("Erro ao processar.");
-    } else {
-        toast.success(acaoDecisao === 'retrabalho' ? "Devolvida ao Montador!" : "Enviada para Oficina!");
-        
-        await registrarLog(acaoDecisao === 'retrabalho' ? 'RETRABALHO_QA' : 'REPROVACAO_QA', motoSelecionada.sku, { 
-            motivo: observacao,
-            supervisor_responsavel: user?.nome,
-            contador_atual: payload.rework_count
-        });
-
-        setModalOpen(false);
+    if(error) toast.error("Erro ao aprovar");
+    else {
+        toast.success("Aprovada!");
+        await registrarLog('APROVACAO_QA', moto.sku, { supervisor: user.nome });
         fetchMotos();
     }
   };
 
-  const handleRetornarAnalise = async (id: string) => {
-    const { error } = await supabase
-        .from('motos')
-        .update({ status: 'em_analise', detalhes_avaria: null }) 
-        .eq('id', id);
-    
-    if(!error) { 
-        toast.success("Retornada para inspeção."); 
-        fetchMotos(); 
+  const abrirModalQA = (moto: any, tipo: 'retrabalho' | 'avaria') => {
+    setMotoSelecionada(moto);
+    setAcaoDecisao(tipo);
+    setObservacaoQA("");
+    setTipoAvaria("");
+    setModalDecisaoOpen(true);
+  };
+
+  const confirmarDecisaoQA = async () => {
+    const user = JSON.parse(localStorage.getItem('sgm_user') || '{}');
+    if (!observacaoQA) return toast.warning("Observação obrigatória");
+
+    let payload: any = { supervisor_id: user.id, updated_at: new Date().toISOString() };
+
+    if (acaoDecisao === 'retrabalho') {
+        payload.status = 'retrabalho_montagem';
+        payload.observacoes = `RETRABALHO: ${observacaoQA}`;
+        payload.localizacao = motoSelecionada.montador ? `Box ${motoSelecionada.montador.nome.split(' ')[0]}` : 'Linha de Montagem';
+        payload.rework_count = (motoSelecionada.rework_count || 0) + 1;
+        await registrarLog('RETRABALHO_QA', motoSelecionada.sku, { motivo: observacaoQA });
+    } else {
+        if (!tipoAvaria) return toast.warning("Selecione o defeito.");
+        payload.status = tipoAvaria; 
+        payload.detalhes_avaria = observacaoQA;
+        payload.localizacao = 'Pátio de Avarias CD';
+        
+        await supabase.from('historico_avarias').insert({
+            moto_id: motoSelecionada.id,
+            sku: motoSelecionada.sku,
+            modelo: motoSelecionada.modelo,
+            cor: motoSelecionada.cor,
+            cor_banco: motoSelecionada.cor_banco,
+            tipo_avaria: tipoAvaria,
+            descricao_problema: observacaoQA,
+            supervisor_id: user.id,
+            status_ticket: 'pendente',
+            data_reporte: new Date().toISOString()
+        });
+        await registrarLog('REPROVACAO_QA', motoSelecionada.sku, { motivo: observacaoQA, tipo: tipoAvaria });
     }
+
+    await supabase.from('motos').update(payload).eq('id', motoSelecionada.id);
+    toast.success("Status atualizado!");
+    setModalDecisaoOpen(false);
+    fetchMotos();
+  };
+
+  const concluirReparo = async () => {
+    if (!nomeTecnico || !observacaoReparo) return toast.warning("Preencha todos os campos.");
+
+    await supabase.from('historico_avarias').update({
+        tecnico_nome: nomeTecnico,
+        descricao_solucao: observacaoReparo,
+        data_resolucao: new Date().toISOString(),
+        status_ticket: 'resolvido'
+    }).eq('moto_id', motoSelecionada.id).eq('status_ticket', 'pendente');
+
+    await supabase.from('motos').update({
+        status: 'em_analise',
+        localizacao: 'Pátio Qualidade (Retorno Oficina)',
+        tecnico_reparo: nomeTecnico, 
+        detalhes_avaria: null,
+        observacoes: `REPARADO POR ${nomeTecnico}: ${observacaoReparo}`
+    }).eq('id', motoSelecionada.id);
+
+    await registrarLog('REPARO_OFICINA', motoSelecionada.sku, { tecnico: nomeTecnico });
+    toast.success("Reparo registrado!");
+    setModalReparoOpen(false);
+    fetchMotos();
   };
 
   return (
     <RoleGuard allowedRoles={['supervisor', 'gestor', 'master']}>
       <div className="space-y-6 animate-in fade-in pb-20">
+        
         <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
           <div>
             <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
-               <ClipboardCheck className="w-8 h-8 text-purple-600" /> Controle de Qualidade
+               <ClipboardCheck className="w-8 h-8 text-purple-600" /> Inspeção de Qualidade
             </h1>
-            <p className="text-slate-500">Validação técnica e assinatura digital de conformidade.</p>
+            <p className="text-slate-500">Validação técnica detalhada.</p>
           </div>
         </div>
 
-        <Tabs defaultValue="analise" className="w-full">
+        <Tabs defaultValue="qa" className="w-full">
             <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-                <TabsTrigger value="analise">Aguardando Inspeção ({listaAnalise.length})</TabsTrigger>
-                <TabsTrigger value="reparo">Oficina / Avarias ({listaReparo.length})</TabsTrigger>
+                <TabsTrigger value="qa">🔎 Inspeção ({listaAnalise.length})</TabsTrigger>
+                <TabsTrigger value="oficina">🛠️ Oficina ({listaReparo.length})</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="analise" className="mt-6 space-y-4">
-                {loading ? <div className="space-y-4">{[1,2,3].map(i => <Skeleton key={i} className="h-32 w-full" />)}</div> : 
-                listaAnalise.length === 0 ? (
-                    <div className="text-center py-20 text-slate-400 border-2 border-dashed rounded-xl border-slate-200 dark:border-slate-800">
+            {/* ABA 1: INSPEÇÃO QA (VISUAL DETALHADO) */}
+            <TabsContent value="qa" className="mt-6 space-y-4">
+                {loading && <div className="space-y-4">{[1,2].map(i => <Skeleton key={i} className="h-48 w-full" />)}</div>}
+                
+                {!loading && listaAnalise.length === 0 && (
+                    <div className="text-center py-20 text-slate-400 border-2 border-dashed rounded-xl">
                         <CheckCircle2 className="w-12 h-12 mx-auto mb-2 opacity-20"/>
                         <p>Linha limpa! Nenhuma moto aguardando validação.</p>
                     </div>
-                ) : (
-                    listaAnalise.map((moto) => (
-                        <Card key={moto.id} className="border-l-4 border-l-blue-500 hover:shadow-md transition-all bg-white dark:bg-slate-900 border-y border-r border-slate-200 dark:border-slate-800 group">
-                            <CardContent className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                                <div className="flex-1 space-y-3">
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-blue-600 border-blue-200 font-mono tracking-wider">{moto.sku}</Badge>
-                                        <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300">{moto.modelo}</Badge>
-                                    </div>
-                                    <div className="flex flex-wrap gap-4 items-center">
-                                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-950/50 w-fit px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                                            <User className="w-4 h-4 text-slate-400" />
-                                            <span className="text-xs text-slate-500 uppercase font-bold">Montador:</span>
-                                            <span className="text-sm font-bold text-slate-900 dark:text-white">{moto.montador?.nome || 'Não Identificado'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 text-xs font-medium bg-blue-50 dark:bg-blue-900/10 px-2 py-1 rounded border border-blue-100 dark:border-blue-900/20">
-                                                <Timer className="w-3.5 h-3.5" />
-                                                <span>Tempo: {calcularPerformance(moto.inicio_montagem, moto.fim_montagem)}</span>
-                                            </div>
-                                            {/* Indicador Visual de Retrabalhos Já Ocorridos */}
-                                            {moto.rework_count > 0 && (
-                                                <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 text-xs font-bold bg-red-50 dark:bg-red-900/10 px-2 py-1 rounded border border-red-100 dark:border-red-900/20">
-                                                    <RotateCcw className="w-3.5 h-3.5" />
-                                                    <span>{moto.rework_count}ª Devolução</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {moto.observacoes && moto.observacoes.includes('RETRABALHO') && (
-                                        <p className="text-xs text-amber-600 font-bold flex items-center gap-1">
-                                            <RotateCcw className="w-3 h-3" /> Moto retornou de retrabalho
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="flex gap-2 w-full md:w-auto">
-                                    <Button variant="outline" className="flex-1 md:flex-none text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-900/50 dark:hover:bg-amber-900/20" onClick={() => abrirModal(moto, 'retrabalho')}>
-                                        <RotateCcw className="w-4 h-4 mr-2" /> Retrabalho
-                                    </Button>
-                                    <Button variant="outline" className="flex-1 md:flex-none text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-900/20" onClick={() => abrirModal(moto, 'avaria')}>
-                                        <AlertTriangle className="w-4 h-4 mr-2" /> Defeito
-                                    </Button>
-                                    <Button className="flex-[2] md:flex-none bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-600/20" onClick={() => handleAprovar(moto)}>
-                                        <CheckCircle2 className="w-4 h-4 mr-2" /> APROVAR
-                                    </Button>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))
                 )}
-            </TabsContent>
 
-            <TabsContent value="reparo" className="mt-6 space-y-4">
-                {listaReparo.map((moto) => (
-                    <Card key={moto.id} className="border-l-4 border-l-red-500 bg-red-50/30 dark:bg-red-900/10 border-y border-r border-slate-200 dark:border-slate-800">
-                        <CardContent className="p-6 flex flex-col md:flex-row items-center justify-between gap-4">
-                            <div className="space-y-2">
-                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">{moto.modelo}</h3>
-                                <div className="mt-2 text-sm text-red-600 font-bold flex items-center gap-2 uppercase tracking-wide">
-                                    <AlertOctagon className="w-4 h-4" /> 
-                                    {moto.status.replace('avaria_', 'Falha em ')}
+                {listaAnalise.map((moto) => (
+                    <Card key={moto.id} className="border-l-4 border-l-blue-500 shadow-md hover:shadow-lg transition-all overflow-hidden">
+                        <CardContent className="p-0">
+                            {/* Header do Card */}
+                            <div className="bg-slate-50 dark:bg-slate-900/50 p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="font-mono bg-white dark:bg-slate-800">{moto.sku}</Badge>
+                                        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">{moto.ano}</Badge>
+                                    </div>
+                                    <h3 className="font-black text-xl text-slate-900 dark:text-white mt-1">{moto.modelo}</h3>
                                 </div>
-                                <div className="bg-white/50 dark:bg-black/20 p-2 rounded border border-red-100 dark:border-red-900/30">
-                                    <p className="text-sm text-slate-700 dark:text-slate-300 italic">"{moto.detalhes_avaria}"</p>
+                                <div className="text-right">
+                                    <div className="text-xs font-bold text-slate-400 uppercase">Finalizado em</div>
+                                    <div className="text-sm font-medium flex items-center gap-1 justify-end">
+                                        <Calendar className="w-3 h-3"/> {new Date(moto.fim_montagem).toLocaleDateString()}
+                                    </div>
+                                    <div className="text-xs text-slate-500 flex items-center gap-1 justify-end">
+                                        <Clock className="w-3 h-3"/> {new Date(moto.fim_montagem).toLocaleTimeString()}
+                                    </div>
                                 </div>
                             </div>
-                            <Button onClick={() => handleRetornarAnalise(moto.id)} variant="secondary" className="whitespace-nowrap">
-                                <Wrench className="w-4 h-4 mr-2" /> Reparo Concluído
+
+                            <div className="p-6 flex flex-col md:flex-row gap-6">
+                                {/* Coluna 1: Dados Visuais da Moto */}
+                                <div className="flex-1 grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1"><PaintBucket className="w-3 h-3"/> Cor Carenagem</p>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 rounded-full border border-slate-200" style={{backgroundColor: moto.cor === 'Preta' ? '#000' : moto.cor === 'Vermelha' ? '#ef4444' : moto.cor === 'Branca' ? '#fff' : '#94a3b8'}}></div>
+                                            <span className="font-medium text-sm">{moto.cor || 'Não Inf.'}</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1"><Armchair className="w-3 h-3"/> Cor Banco</p>
+                                        <span className="font-medium text-sm">{moto.cor_banco || 'Não Inf.'}</span>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1"><User className="w-3 h-3"/> Montador</p>
+                                        <span className="font-bold text-sm text-slate-900 dark:text-white">{moto.montador?.nome || 'Desconhecido'}</span>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1"><Timer className="w-3 h-3"/> Duração</p>
+                                        <span className="font-mono text-sm bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                                            {calcularDuracao(moto.inicio_montagem, moto.fim_montagem)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Coluna 2: Status e Histórico */}
+                                <div className="flex-1 border-l border-slate-100 dark:border-slate-800 pl-0 md:pl-6 flex flex-col justify-center gap-2">
+                                    {moto.rework_count > 0 && (
+                                        <div className="bg-amber-50 text-amber-700 text-xs p-2 rounded border border-amber-200 flex items-center gap-2">
+                                            <RotateCcw className="w-4 h-4"/> 
+                                            Este é o <strong>{moto.rework_count}º Retrabalho</strong> desta moto.
+                                        </div>
+                                    )}
+                                    {moto.tecnico_reparo && (
+                                        <div className="bg-green-50 text-green-800 text-xs p-2 rounded border border-green-200">
+                                            <div className="flex items-center gap-2 font-bold mb-1"><Wrench className="w-3 h-3"/> Histórico de Oficina</div>
+                                            <p>Consertado por: {moto.tecnico_reparo}</p>
+                                            <p className="italic opacity-80">"{moto.observacoes?.split(':').pop()?.trim()}"</p>
+                                        </div>
+                                    )}
+                                    {!moto.rework_count && !moto.tecnico_reparo && (
+                                        <div className="text-center text-slate-400 text-xs italic">
+                                            Nenhum problema anterior registrado.
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Coluna 3: Ações */}
+                                <div className="flex flex-col gap-2 justify-center min-w-[150px]">
+                                    <Button className="bg-green-600 hover:bg-green-700 h-12 w-full font-bold shadow-lg shadow-green-600/20" onClick={() => handleAprovar(moto)}>
+                                        <CheckCircle2 className="w-5 h-5 mr-2"/> APROVAR
+                                    </Button>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Button variant="outline" size="sm" className="text-amber-600 border-amber-200 hover:bg-amber-50" onClick={() => abrirModalQA(moto, 'retrabalho')}>
+                                            Retrabalho
+                                        </Button>
+                                        <Button variant="destructive" size="sm" onClick={() => abrirModalQA(moto, 'avaria')}>
+                                            Reprovar
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ))}
+            </TabsContent>
+
+            {/* ABA 2: OFICINA (Visual Compacto) */}
+            <TabsContent value="oficina" className="mt-6 space-y-4">
+                {listaReparo.map((moto) => (
+                    <Card key={moto.id} className="border-l-4 border-l-red-500 bg-red-50/10">
+                        <CardContent className="p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div>
+                                <h3 className="font-bold text-red-700 flex items-center gap-2">
+                                    <AlertOctagon className="w-5 h-5"/> {moto.status.replace('avaria_', 'FALHA EM ').toUpperCase()}
+                                </h3>
+                                <p className="text-sm font-semibold">{moto.modelo} <span className="font-mono text-slate-400 ml-2">{moto.sku}</span></p>
+                                <div className="text-xs text-slate-500 mt-1">Montador: {moto.montador?.nome}</div>
+                                <div className="mt-2 bg-white/50 p-2 rounded text-sm italic text-slate-700 border border-red-100">"{moto.detalhes_avaria}"</div>
+                            </div>
+                            <Button onClick={() => { setMotoSelecionada(moto); setNomeTecnico(""); setObservacaoReparo(""); setModalReparoOpen(true); }} className="bg-slate-900 text-white">
+                                <Wrench className="w-4 h-4 mr-2" /> REALIZAR REPARO
                             </Button>
                         </CardContent>
                     </Card>
@@ -267,36 +304,46 @@ export default function QualidadePage() {
             </TabsContent>
         </Tabs>
 
-        <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 sm:max-w-[500px]">
+        {/* MODAL DECISÃO QA */}
+        <Dialog open={modalDecisaoOpen} onOpenChange={setModalDecisaoOpen}>
+            <DialogContent className="bg-white dark:bg-slate-950">
                 <DialogHeader>
-                    <DialogTitle>{acaoDecisao === 'retrabalho' ? 'Solicitar Retrabalho' : 'Reportar Avaria'}</DialogTitle>
-                    <DialogDescription>
-                        {acaoDecisao === 'retrabalho' ? 'Isso contará como uma falha de montagem no perfil do montador.' : 'A moto será segregada para a oficina.'}
-                    </DialogDescription>
+                    <DialogTitle>{acaoDecisao === 'retrabalho' ? 'Devolver para Montador' : 'Enviar para Oficina'}</DialogTitle>
+                    <DialogDescription>Descreva o problema encontrado.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     {acaoDecisao === 'avaria' && (
-                        <Select value={tipoAvaria} onValueChange={setTipoAvaria}>
-                            <SelectTrigger><SelectValue placeholder="Tipo de Defeito" /></SelectTrigger>
+                        <Select onValueChange={setTipoAvaria} value={tipoAvaria}>
+                            <SelectTrigger><SelectValue placeholder="Tipo de Falha"/></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="avaria_mecanica">🔧 Mecânica</SelectItem>
-                                <SelectItem value="avaria_pintura">🎨 Pintura</SelectItem>
-                                <SelectItem value="avaria_estrutura">🏗️ Estrutura</SelectItem>
-                                <SelectItem value="avaria_pecas">⚙️ Peças Faltantes</SelectItem>
+                                 <SelectItem value="avaria_mecanica">Mecânica</SelectItem>
+                                 <SelectItem value="avaria_pintura">Pintura</SelectItem>
+                                 <SelectItem value="avaria_estrutura">Estrutura</SelectItem>
+                                 <SelectItem value="avaria_pecas">Peças</SelectItem>
                             </SelectContent>
                         </Select>
                     )}
-                    <Input value={observacao} onChange={e => setObservacao(e.target.value)} placeholder="Descreva o problema..." className="h-11" />
+                    <Input placeholder="Detalhes do problema..." value={observacaoQA} onChange={e => setObservacaoQA(e.target.value)} />
                 </div>
                 <DialogFooter>
-                    <Button variant="ghost" onClick={() => setModalOpen(false)}>Cancelar</Button>
-                    <Button className={acaoDecisao === 'retrabalho' ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'} onClick={handleConfirmarDecisao}>
-                        Confirmar <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
+                    <Button variant="ghost" onClick={() => setModalDecisaoOpen(false)}>Cancelar</Button>
+                    <Button onClick={confirmarDecisaoQA} className={acaoDecisao === 'retrabalho' ? 'bg-amber-600' : 'bg-red-600'}>Confirmar</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
+        {/* MODAL REPARO */}
+        <Dialog open={modalReparoOpen} onOpenChange={setModalReparoOpen}>
+            <DialogContent className="bg-white dark:bg-slate-950">
+                <DialogHeader><DialogTitle>Registro de Manutenção</DialogTitle></DialogHeader>
+                <div className="space-y-4 py-4">
+                    <Input placeholder="Nome do Técnico" value={nomeTecnico} onChange={e => setNomeTecnico(e.target.value)} />
+                    <Input placeholder="O que foi feito?" value={observacaoReparo} onChange={e => setObservacaoReparo(e.target.value)} />
+                </div>
+                <DialogFooter><Button onClick={concluirReparo} className="bg-green-600 hover:bg-green-700 w-full">Concluir</Button></DialogFooter>
+            </DialogContent>
+        </Dialog>
+
       </div>
     </RoleGuard>
   );

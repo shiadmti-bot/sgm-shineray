@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { registrarLog } from "@/lib/logger";
 import { 
-  Search, Plus, Edit, Wrench, Shield, Crown, Briefcase, Hash, CreditCard, Archive, RotateCcw, AlertTriangle, Timer, Trophy
+  Search, Plus, Edit, Wrench, Shield, Crown, Briefcase, Hash, CreditCard, Archive, RotateCcw, Timer, Trophy, User, CheckCircle2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,23 +13,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-// Tipos V2.0
+// Tipos
 type Tecnico = {
   id: string;
   nome: string;
   cargo: 'master' | 'gestor' | 'supervisor' | 'montador';
   email: string;
   matricula?: string;
-  pin?: string;
+  senha?: string;
   ativo: boolean; 
-  // KPIs Calculados
+  // KPIs
   total_montagens: number;
   total_retrabalhos: number;
-  tempo_medio: number;
+  tempo_medio: number; // em minutos
   status_atual: 'livre' | 'em_producao' | 'arquivado';
 };
 
@@ -47,7 +47,7 @@ export default function TecnicosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Form States
+  // Form States (Inicializados com "" para evitar erro de uncontrolled input)
   const [formNome, setFormNome] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formCargo, setFormCargo] = useState("montador");
@@ -65,52 +65,76 @@ export default function TecnicosPage() {
     const sessao = sessaoStr ? JSON.parse(sessaoStr) : null;
     setCurrentUserRole(sessao?.cargo || 'gestor');
 
-    // 1. Busca Funcionários
-    let query = supabase.from('funcionarios').select('*').order('nome');
-    if (filtroStatus === 'arquivados') query = query.eq('ativo', false);
-    else query = query.eq('ativo', true);
+    try {
+        // 1. Busca Funcionários
+        let query = supabase.from('funcionarios').select('*').order('nome');
+        if (filtroStatus === 'arquivados') query = query.eq('ativo', false);
+        else query = query.eq('ativo', true);
 
-    const { data: funcs } = await query;
-    if (!funcs) { setLoading(false); return; }
+        const { data: funcs, error: errFuncs } = await query;
+        if (errFuncs) throw errFuncs;
+        if (!funcs) { setLoading(false); return; }
 
-    // 2. Busca KPIs de Produção (Motos)
-    const { data: producao } = await supabase
-      .from('motos')
-      .select('montador_id, tempo_montagem, status, observacoes');
+        // 2. Busca KPIs Reais (Busca otimizada para garantir contagem)
+        // Buscamos todas as motos que já passaram por montagem (status não é aguardando)
+        const { data: producao, error: errProd } = await supabase
+          .from('motos')
+          .select('montador_id, status, rework_count, inicio_montagem, fim_montagem')
+          .neq('status', 'aguardando_montagem'); // Filtra apenas o que já foi tocado
 
-    // 3. Processamento dos Dados
-    const listaProcessada = funcs.map((f: any) => {
-      const minhasMotos = producao?.filter((m: any) => m.montador_id === f.id) || [];
-      
-      // Contagens
-      const total = minhasMotos.length;
-      const retrabalhos = minhasMotos.filter((m: any) => 
-          m.status === 'retrabalho_montagem' || 
-          (m.observacoes && m.observacoes.includes('RETRABALHO'))
-      ).length;
+        if (errProd) throw errProd;
 
-      // Tempo Médio (apenas finalizadas com tempo > 0)
-      const finalizadas = minhasMotos.filter((m: any) => m.tempo_montagem > 0);
-      const tempoTotal = finalizadas.reduce((acc: number, curr: any) => acc + curr.tempo_montagem, 0);
-      const media = finalizadas.length > 0 ? Math.round(tempoTotal / finalizadas.length) : 0;
+        // 3. Processamento dos Dados
+        const listaProcessada = funcs.map((f: any) => {
+          const minhasMotos = producao?.filter((m: any) => m.montador_id === f.id) || [];
+          
+          // Contagem: Considera TUDO que ele montou (aprovado, em analise, etc)
+          const total = minhasMotos.length;
+          
+          // Retrabalhos
+          const retrabalhos = minhasMotos.reduce((acc: number, curr: any) => {
+              return acc + (curr.rework_count || (curr.status === 'retrabalho_montagem' ? 1 : 0));
+          }, 0);
 
-      // Status Atual (Está trabalhando agora?)
-      const trabalhando = minhasMotos.some((m: any) => m.status === 'em_producao');
+          // Tempo Médio
+          const finalizadas = minhasMotos.filter((m: any) => m.inicio_montagem && m.fim_montagem);
+          let somaMinutos = 0;
+          let countValidos = 0;
+          
+          finalizadas.forEach((m: any) => {
+              const inicio = new Date(m.inicio_montagem).getTime();
+              const fim = new Date(m.fim_montagem).getTime();
+              const diff = (fim - inicio) / 1000 / 60; 
+              if (diff > 0 && diff < 480) { // Filtro de sanidade (8h)
+                  somaMinutos += diff;
+                  countValidos++;
+              }
+          });
 
-      return {
-        ...f,
-        total_montagens: total,
-        total_retrabalhos: retrabalhos,
-        tempo_medio: media,
-        status_atual: f.ativo ? (trabalhando ? 'em_producao' : 'livre') : 'arquivado'
-      };
-    });
+          const media = countValidos > 0 ? Math.round(somaMinutos / countValidos) : 0;
 
-    setTecnicos(listaProcessada);
-    setLoading(false);
+          // Status Atual
+          const trabalhando = minhasMotos.some((m: any) => m.status === 'em_producao');
+
+          return {
+            ...f,
+            total_montagens: total,
+            total_retrabalhos: retrabalhos,
+            tempo_medio: media,
+            status_atual: f.ativo ? (trabalhando ? 'em_producao' : 'livre') : 'arquivado'
+          };
+        });
+
+        setTecnicos(listaProcessada);
+    } catch (error) {
+        console.error("Erro ao carregar técnicos:", error);
+        toast.error("Falha ao carregar dados da equipe.");
+    } finally {
+        setLoading(false);
+    }
   }
 
-  // --- Lógica do Modal (CRUD) ---
+  // --- Lógica do Modal ---
   const handleOpenCreate = () => {
     setEditingId(null);
     setFormNome(""); setFormEmail(""); setFormCargo("montador");
@@ -119,18 +143,20 @@ export default function TecnicosPage() {
   };
 
   const handleOpenEdit = (tec: Tecnico) => {
-    if (currentUserRole !== 'master' && tec.cargo === 'master') {
-        toast.error("Apenas Master pode editar este perfil.");
-        return;
-    }
     setEditingId(tec.id);
-    setFormNome(tec.nome); setFormEmail(tec.email); setFormCargo(tec.cargo);
-    setFormMatricula(tec.matricula || ""); setFormPin(tec.pin || ""); setFormSenha(""); 
+    setFormNome(tec.nome || ""); 
+    setFormEmail(tec.email || ""); 
+    setFormCargo(tec.cargo || "montador");
+    setFormMatricula(tec.matricula || ""); 
+    
+    if (tec.cargo === 'montador') setFormPin(tec.senha || "");
+    else setFormSenha(""); 
+    
     setModalOpen(true);
   };
 
   const handleSalvar = async () => {
-    if (!formNome || !formEmail) return toast.warning("Nome e Email obrigatórios.");
+    if (!formNome) return toast.warning("Nome obrigatório.");
 
     const payload: any = { 
         nome: formNome, 
@@ -139,56 +165,44 @@ export default function TecnicosPage() {
         ativo: true 
     };
 
-    // Regra de Negócio V2.0: Montador usa PIN/Matrícula, Outros usam Senha
     if (formCargo === 'montador') {
-        if (!formMatricula) return toast.warning("Matrícula obrigatória para Montador.");
+        if (!formMatricula) return toast.warning("Matrícula obrigatória.");
         payload.matricula = formMatricula; 
-        if (formPin) payload.pin = formPin; 
-        else if (!editingId) payload.pin = "1234"; // Default
+        if (formPin) payload.senha = formPin; 
+        else if (!editingId) payload.senha = "1234";
     } else {
         if (formSenha) payload.senha = formSenha;
-        else if (!editingId) payload.senha = "shineray123"; // Default
+        else if (!editingId) payload.senha = "shineray123";
     }
 
     try {
-        let error;
         if (editingId) {
-            const res = await supabase.from('funcionarios').update(payload).eq('id', editingId);
-            error = res.error;
-            if (!error) await registrarLog("EDICAO", payload.nome, { id: editingId, cargo: payload.cargo });
+            await supabase.from('funcionarios').update(payload).eq('id', editingId);
+            await registrarLog("EDICAO", payload.nome, { id: editingId });
         } else {
             payload.data_contratacao = new Date().toISOString();
-            const res = await supabase.from('funcionarios').insert(payload);
-            error = res.error;
-            if (!error) await registrarLog("CADASTRO", payload.nome, { cargo: payload.cargo });
+            await supabase.from('funcionarios').insert(payload);
+            await registrarLog("CADASTRO", payload.nome, { cargo: payload.cargo });
         }
-
-        if (error) throw error;
-        toast.success(editingId ? "Atualizado!" : "Cadastrado!");
+        toast.success("Salvo com sucesso!");
         setModalOpen(false);
         fetchData();
     } catch (err: any) {
-        console.error(err);
-        if (err.code === '23505') toast.error("E-mail ou Matrícula já existem.");
-        else toast.error("Erro ao salvar.");
+        toast.error("Erro ao salvar dados.");
     }
   };
 
   const handleArquivar = async (id: string, nome: string) => { 
     if(!confirm(`Arquivar ${nome}?`)) return;
-    const { error } = await supabase.from('funcionarios').update({ ativo: false }).eq('id', id);
-    if (!error) { toast.success("Arquivado."); fetchData(); }
+    await supabase.from('funcionarios').update({ ativo: false }).eq('id', id);
+    toast.success("Arquivado."); 
+    fetchData();
   };
 
-  const handleRestaurar = async (id: string, nome: string) => {
-    if(!confirm(`Restaurar ${nome}?`)) return;
-    const { error } = await supabase.from('funcionarios').update({ ativo: true }).eq('id', id);
-    if (!error) { toast.success("Restaurado."); setFiltroStatus("ativos"); }
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("ID copiado!");
+  const handleRestaurar = async (id: string) => {
+    await supabase.from('funcionarios').update({ ativo: true }).eq('id', id);
+    toast.success("Restaurado."); 
+    setFiltroStatus("ativos");
   };
 
   const listaFiltrada = tecnicos.filter(t => {
@@ -197,13 +211,13 @@ export default function TecnicosPage() {
     return matchBusca && matchFuncao;
   });
 
-  // --- HELPERS DE UI V2.0 ---
+  // UI Helpers
   const getCargoInfo = (cargo: string) => {
     switch(cargo) {
-        case 'master': return { label: 'MASTER ADMIN', color: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400 border-purple-200 dark:border-purple-500/50', icon: Crown };
-        case 'gestor': return { label: 'GESTOR', color: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 border-blue-200 dark:border-blue-500/50', icon: Briefcase };
-        case 'supervisor': return { label: 'SUPERVISOR', color: 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border-orange-200 dark:border-orange-500/50', icon: Shield };
-        default: return { label: 'MONTADOR', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-slate-200 dark:border-slate-700', icon: Wrench };
+        case 'master': return { label: 'MASTER', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', icon: Crown };
+        case 'gestor': return { label: 'GESTOR', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', icon: Briefcase };
+        case 'supervisor': return { label: 'SUPERVISOR', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', icon: Shield };
+        default: return { label: 'MONTADOR', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400', icon: Wrench };
     }
   };
 
@@ -211,20 +225,21 @@ export default function TecnicosPage() {
     <RoleGuard allowedRoles={['master', 'gestor']}>
       <div className="space-y-8 animate-in fade-in duration-500 pb-20">
         
-        {/* Cabeçalho */}
-        <div className="flex flex-col md:flex-row justify-between gap-4">
+        {/* Header (Igual Relatórios) */}
+        <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white mb-1">Gestão de Equipe</h1>
-            <p className="text-slate-500 dark:text-slate-400">Controle de acesso e monitoramento de KPIs individuais.</p>
+            <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+               Gestão de Equipe
+            </h1>
+            <p className="text-slate-500">Controle de acesso e monitoramento de KPIs.</p>
           </div>
-          
-          <Button onClick={handleOpenCreate} className="h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 shadow-lg shadow-blue-900/20">
+          <Button onClick={handleOpenCreate} className="bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg shadow-blue-600/20">
               <Plus className="w-5 h-5 mr-2" /> Novo Colaborador
           </Button>
         </div>
 
         {/* Filtros */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row gap-4 shadow-sm transition-colors">
+        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row gap-4 shadow-sm">
            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
               <Input 
@@ -239,7 +254,7 @@ export default function TecnicosPage() {
               <SelectTrigger className="w-[180px] h-12 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800">
                   <SelectValue placeholder="Todas funções" />
               </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+              <SelectContent>
                  <SelectItem value="todos">Todos</SelectItem>
                  <SelectItem value="montador">Montadores</SelectItem>
                  <SelectItem value="supervisor">Supervisores</SelectItem>
@@ -248,134 +263,114 @@ export default function TecnicosPage() {
            </Select>
 
            <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-              <SelectTrigger className="w-[200px] h-12 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+              <SelectTrigger className="w-[160px] h-12 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800">
                  <SelectValue placeholder="Status" />
               </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+              <SelectContent>
                  <SelectItem value="ativos">✅ Ativos</SelectItem>
                  <SelectItem value="arquivados">📦 Arquivados</SelectItem>
               </SelectContent>
            </Select>
         </div>
 
-        {/* Grid de Cards */}
+        {/* Grid de Cards (Tamanho Restaurado e Design Alinhado) */}
         {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1,2,3].map(i => <Skeleton key={i} className="h-72 w-full rounded-2xl bg-slate-200 dark:bg-slate-800" />)}
+                {[1,2,3].map(i => <Skeleton key={i} className="h-80 w-full rounded-2xl" />)}
             </div>
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {listaFiltrada.length === 0 ? (
-                    <div className="col-span-full text-center py-20 text-slate-500">
-                        Nenhum funcionário encontrado.
-                    </div>
-                ) : (
-                    listaFiltrada.map((tec) => {
-                        const infoCargo = getCargoInfo(tec.cargo);
-                        const CargoIcon = infoCargo.icon;
-                        
-                        return (
-                            <Card key={tec.id} className={`bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 relative overflow-hidden group transition-all shadow-sm hover:shadow-md hover:border-blue-300 dark:hover:border-slate-700 ${!tec.ativo ? 'opacity-75 grayscale' : ''}`}>
-                                
-                                {/* Botão ID */}
-                                <div className="absolute top-4 left-4 z-10">
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-slate-900 dark:hover:text-white" onClick={() => copyToClipboard(tec.id)}>
-                                        <Hash className="w-3 h-3" />
-                                    </Button>
-                                </div>
-
-                                {/* Status Badge */}
-                                <div className="absolute top-4 right-4 flex items-center gap-2">
-                                    {tec.ativo ? (
-                                        tec.status_atual === 'em_producao' ? (
-                                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 animate-pulse border-0">
-                                                EM PRODUÇÃO
-                                            </Badge>
-                                        ) : (
-                                            <span className="w-3 h-3 rounded-full bg-slate-300 dark:bg-slate-700" title="Disponível"></span>
-                                        )
-                                    ) : (
-                                        <Badge variant="destructive" className="h-5">ARQUIVADO</Badge>
-                                    )}
-                                </div>
-
-                                <CardContent className="p-6 flex flex-col items-center text-center">
-                                    <Avatar className="w-24 h-24 border-4 border-slate-100 dark:border-slate-800 mb-4 shadow-lg">
-                                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${tec.nome}`} />
-                                        <AvatarFallback>{tec.nome.substring(0,2)}</AvatarFallback>
-                                    </Avatar>
-                                    
-                                    <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1">{tec.nome}</h3>
-                                    
-                                    <Badge variant="outline" className={`mb-4 ${infoCargo.color}`}>
-                                        <CargoIcon className="w-3 h-3 mr-1" /> {infoCargo.label}
+                {listaFiltrada.map((tec) => {
+                    const info = getCargoInfo(tec.cargo);
+                    const Icon = info.icon;
+                    
+                    return (
+                        <Card key={tec.id} className={`group relative hover:border-blue-400 transition-all ${!tec.ativo && 'opacity-60 grayscale'}`}>
+                            {tec.status_atual === 'em_producao' && (
+                                <div className="absolute top-4 right-4 z-10">
+                                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 animate-pulse border-0">
+                                        EM PRODUÇÃO
                                     </Badge>
-
-                                    {/* Exibir Matrícula se for Montador */}
+                                </div>
+                            )}
+                            
+                            <CardContent className="p-6 flex flex-col items-center text-center">
+                                <Avatar className="w-24 h-24 border-4 border-slate-100 dark:border-slate-800 mb-4 shadow-lg">
+                                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${tec.nome}`} />
+                                    <AvatarFallback><User className="w-8 h-8 text-slate-400"/></AvatarFallback>
+                                </Avatar>
+                                
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1">{tec.nome}</h3>
+                                
+                                <div className="flex items-center gap-2 mb-6">
+                                    <Badge variant="outline" className={`px-2 py-1 border-0 ${info.color}`}>
+                                        <Icon className="w-3 h-3 mr-1" /> {info.label}
+                                    </Badge>
                                     {tec.cargo === 'montador' && (
-                                        <div className="mb-6 bg-slate-50 dark:bg-slate-950 px-3 py-1 rounded border border-slate-200 dark:border-slate-800 flex items-center gap-2">
-                                            <CreditCard className="w-3 h-3 text-slate-400" />
-                                            <span className="text-xs text-slate-500 uppercase font-bold">Matrícula:</span>
-                                            <span className="text-sm font-mono text-slate-900 dark:text-white font-bold">{tec.matricula}</span>
-                                        </div>
+                                        <span className="text-xs font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded font-bold">
+                                            {tec.matricula}
+                                        </span>
                                     )}
+                                </div>
 
-                                    {/* KPIS (Stats) */}
-                                    <div className="w-full grid grid-cols-3 gap-2 text-center bg-slate-50 dark:bg-slate-950/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800/50 mb-4">
-                                        <div>
-                                            <div className="flex justify-center mb-1"><Trophy className="w-4 h-4 text-green-500" /></div>
-                                            <p className="text-lg font-bold text-slate-900 dark:text-white">{tec.total_montagens}</p>
-                                            <p className="text-[10px] text-slate-500 uppercase font-bold">Total</p>
-                                        </div>
-                                        <div>
-                                            <div className="flex justify-center mb-1"><Timer className="w-4 h-4 text-blue-500" /></div>
-                                            <p className="text-lg font-bold text-slate-900 dark:text-white">{tec.tempo_medio}</p>
-                                            <p className="text-[10px] text-slate-500 uppercase font-bold">Média (min)</p>
-                                        </div>
-                                        <div>
-                                            <div className="flex justify-center mb-1"><RotateCcw className="w-4 h-4 text-amber-500" /></div>
-                                            <p className="text-lg font-bold text-amber-600 dark:text-amber-500">{tec.total_retrabalhos}</p>
-                                            <p className="text-[10px] text-slate-500 uppercase font-bold">Retrabalho</p>
-                                        </div>
+                                {/* KPIs (Stats) */}
+                                <div className="w-full grid grid-cols-3 gap-2 text-center bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800/50 mb-6">
+                                    <div>
+                                        <div className="flex justify-center mb-1"><Trophy className="w-5 h-5 text-green-500" /></div>
+                                        <p className="text-2xl font-black text-slate-900 dark:text-white">{tec.total_montagens}</p>
+                                        <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Total</p>
                                     </div>
+                                    <div>
+                                        <div className="flex justify-center mb-1"><Timer className="w-5 h-5 text-blue-500" /></div>
+                                        <p className="text-2xl font-black text-slate-900 dark:text-white">{tec.tempo_medio}</p>
+                                        <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Média (min)</p>
+                                    </div>
+                                    <div>
+                                        <div className="flex justify-center mb-1"><RotateCcw className="w-5 h-5 text-amber-500" /></div>
+                                        <p className="text-2xl font-black text-amber-600 dark:text-amber-500">{tec.total_retrabalhos}</p>
+                                        <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Retrabalho</p>
+                                    </div>
+                                </div>
 
-                                    {/* Ações */}
-                                    <div className="flex gap-2 w-full">
-                                        <Button variant="outline" className="flex-1" onClick={() => handleOpenEdit(tec)}>
-                                            <Edit className="w-4 h-4 mr-2" /> Editar
+                                <div className="flex gap-3 w-full">
+                                    <Button variant="outline" className="flex-1 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => handleOpenEdit(tec)}>
+                                        <Edit className="w-4 h-4 mr-2" /> Editar
+                                    </Button>
+                                    {tec.ativo ? (
+                                        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleArquivar(tec.id, tec.nome)}>
+                                            <Archive className="w-5 h-5" />
                                         </Button>
-                                        {tec.ativo ? (
-                                            <Button variant="ghost" className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleArquivar(tec.id, tec.nome)}>
-                                                <Archive className="w-4 h-4" />
-                                            </Button>
-                                        ) : (
-                                            <Button variant="ghost" className="text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={() => handleRestaurar(tec.id, tec.nome)}>
-                                                <RotateCcw className="w-4 h-4" />
-                                            </Button>
-                                        )}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        );
-                    })
-                )}
+                                    ) : (
+                                        <Button variant="ghost" size="icon" className="text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={() => handleRestaurar(tec.id)}>
+                                            <RotateCcw className="w-5 h-5" />
+                                        </Button>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    );
+                })}
             </div>
         )}
 
-        {/* MODAL DE CRIAÇÃO/EDIÇÃO */}
+        {/* MODAL */}
         <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+            <DialogContent className="bg-white dark:bg-slate-950 sm:max-w-[500px]">
                 <DialogHeader>
                     <DialogTitle>{editingId ? "Editar Perfil" : "Novo Colaborador"}</DialogTitle>
+                    <DialogDescription>
+                        Preencha os dados de acesso e função.
+                    </DialogDescription>
                 </DialogHeader>
+                
                 <div className="space-y-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <label className="text-sm font-medium">Nome</label>
+                            <label className="text-sm font-bold">Nome Completo</label>
                             <Input value={formNome} onChange={e => setFormNome(e.target.value)} placeholder="João Silva" />
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium">Cargo</label>
+                            <label className="text-sm font-bold">Cargo</label>
                             <Select value={formCargo} onValueChange={setFormCargo}>
                                 <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
@@ -388,29 +383,29 @@ export default function TecnicosPage() {
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-sm font-medium">E-mail (Login Corporativo)</label>
+                        <label className="text-sm font-bold">E-mail (Login Corporativo)</label>
                         <Input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="joao@shineray.com" />
                     </div>
 
-                    {/* Campos Condicionais */}
                     {formCargo === 'montador' ? (
                         <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-100 dark:border-slate-800">
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Matrícula (Login)</label>
+                                <label className="text-sm font-bold">Matrícula</label>
                                 <Input value={formMatricula} onChange={e => setFormMatricula(e.target.value)} placeholder="1001" className="font-mono" />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">PIN (Senha Numérica)</label>
+                                <label className="text-sm font-bold">PIN (Senha)</label>
                                 <Input value={formPin} onChange={e => setFormPin(e.target.value)} maxLength={4} placeholder="1234" className="font-mono" />
                             </div>
                         </div>
                     ) : (
                         <div className="space-y-2 bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-100 dark:border-slate-800">
-                            <label className="text-sm font-medium">Senha de Acesso</label>
+                            <label className="text-sm font-bold">Senha de Acesso</label>
                             <Input type="password" value={formSenha} onChange={e => setFormSenha(e.target.value)} placeholder={editingId ? "Manter atual" : "******"} />
                         </div>
                     )}
                 </div>
+
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
                     <Button onClick={handleSalvar} className="bg-blue-600 hover:bg-blue-700 text-white">Salvar</Button>
