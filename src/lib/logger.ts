@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 
-// 1. Definição Completa dos Tipos de Ação (V2.1 - Atualizado)
+// 1. Definição Completa dos Tipos de Ação (V2.2 - Build Fix)
 export type AcaoLog = 
   // Acesso
   | 'LOGIN' 
@@ -13,6 +13,7 @@ export type AcaoLog =
   | 'ENTRADA_ESTOQUE'      
   // Fluxo de Montagem
   | 'INICIO_MONTAGEM' 
+  | 'PAUSA_MONTAGEM'
   | 'PAUSA_SOLICITADA'     
   | 'PAUSA_APROVADA'       
   | 'PAUSA_REJEITADA'      
@@ -24,9 +25,9 @@ export type AcaoLog =
   | 'RETRABALHO_QA'        
   | 'REPARO_OFICINA'       
   | 'RETORNO_REPARO'       
-  // Logística Final (NOVO)
+  // Logística Final
   | 'IMPRESSAO_ETIQUETA'
-  | 'SAIDA_ESTOQUE'; // <--- ADICIONADO AQUI
+  | 'SAIDA_ESTOQUE';
 
 // 2. Interface para padronizar detalhes
 interface DetalhesLog {
