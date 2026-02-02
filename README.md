@@ -1,126 +1,72 @@
-📘 Documentação Técnica - SGM System (v1.5)
-Status: Congelado (Frozen) para Refatoração V2.0
+# SGM - Sistema de Gestão de Montagem (Shineray By Sabel)
 
-Data: 26/01/2026
+![Status](https://img.shields.io/badge/Status-Produção-green)
+![Version](https://img.shields.io/badge/Versão-2.0.0-blue)
+![Stack](https://img.shields.io/badge/Stack-Next.js_14_|_Supabase-black)
 
-Objetivo: Controle de entrada de chassis, monitoramento de linha de montagem, gestão de estoque e BI.
+Sistema web completo para controle de linha de montagem de motocicletas, abrangendo desde a entrada do chassi até a expedição, com controle rigoroso de qualidade, gestão de avarias e etiquetagem térmica.
 
-1. Stack Tecnológica
-A versão 1.5 foi construída utilizando uma arquitetura Serverless com foco em performance no Frontend.
+## 🚀 Funcionalidades Principais
 
-Frontend: Next.js 14 (App Router)
+* **Torre de Controle (Dashboard):** Monitoramento em tempo real da produção, gargalos e metas.
+* **Linha de Montagem Digital:** Cronometragem automática, checklists de segurança e solicitações de pausa.
+* **Controle de Qualidade (QA):** Fluxo de aprovação, retrabalho (volta pra linha) ou segregação (vai para oficina).
+* **Gestão de Avarias:** Histórico imutável de defeitos e reparos ("Prontuário da Moto").
+* **Etiquetagem Integrada:** Geração de etiquetas térmicas (100x150mm e 70x50mm) compatíveis com impressoras BY-480BT.
+* **Estoque & Expedição:** Controle de inventário final com filtros avançados e baixa de saída.
+* **Auditoria:** Rastreabilidade completa de ações (Logs do Sistema).
 
-Linguagem: TypeScript
+## 🛠️ Stack Tecnológica
 
-Estilização: Tailwind CSS + Shadcn/ui (Radix Primitives)
+* **Frontend:** [Next.js 14](https://nextjs.org/) (App Router), React, TypeScript.
+* **Estilização:** [Tailwind CSS](https://tailwindcss.com/) + [Shadcn/ui](https://ui.shadcn.com/).
+* **Backend & Database:** [Supabase](https://supabase.com/) (PostgreSQL, Auth, Realtime).
+* **Bibliotecas Chave:**
+    * `recharts`: Gráficos e BI.
+    * `jsbarcode`: Geração de códigos de barras (Code128).
+    * `lucide-react`: Ícones.
+    * `sonner`: Notificações (Toasts).
 
-Animações: Framer Motion (framer-motion) + CSS Transitions
+## ⚙️ Pré-requisitos e Instalação
 
-Backend / Banco de Dados: Supabase (PostgreSQL)
+1.  **Clone o repositório:**
+    ```bash
+    git clone [https://github.com/seu-usuario/sgm-shineray.git](https://github.com/seu-usuario/sgm-shineray.git)
+    cd sgm-shineray
+    ```
 
-Integrações:
+2.  **Instale as dependências:**
+    ```bash
+    npm install
+    ```
 
-react-zxing: Leitura de código de barras via câmera.
+3.  **Configure as Variáveis de Ambiente:**
+    Crie um arquivo `.env.local` na raiz:
+    ```env
+    NEXT_PUBLIC_SUPABASE_URL=sua_url_supabase
+    NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima
+    ```
 
-recharts: Gráficos de BI e Dashboards.
+4.  **Rode o projeto:**
+    ```bash
+    npm run dev
+    ```
 
-exceljs: Exportação de relatórios complexos.
+## 🖨️ Configuração de Impressora (BY-480BT)
 
-sonner: Sistema de notificações (Toasts).
+Para o funcionamento correto da etiquetagem, o driver da impressora no Windows deve ter dois tamanhos de papel configurados:
+1.  **Padrão:** 100mm (Largura) x 150mm (Altura).
+2.  **Moto_Sub_Banco:** 70mm (Largura) x 50mm (Altura).
 
-lucide-react: Iconografia.
+> **Nota:** Sempre configure a impressão como "Retrato" no driver e remova as margens no navegador.
 
-2. Arquitetura de Dados (Banco de Dados Atual)
-Tabela: funcionarios
-Gerencia todos os usuários do sistema.
+## 🔐 Perfis de Acesso (RBAC)
 
-Campos: id (uuid), nome, email (login gestor), senha (texto), matricula (login mecânico), pin (senha mecânico), cargo (master, gestor, inspetor, mecanico), ativo (boolean - Soft Delete), data_contratacao.
+* **Master:** Acesso total (incluindo Auditoria e Gestão de Técnicos).
+* **Gestor:** Visão gerencial, relatórios e controle de estoque.
+* **Supervisor:** Controle de qualidade, aprovação de pausas e gestão de pátio.
+* **Montador:** Acesso restrito à tela de montagem e scanner.
 
-Tabela: motos
-O coração do sistema. Cada registro é uma moto física.
+## 📝 Licença
 
-Campos: id (uuid), sku (Chassi/VIN), modelo, cor, ano, status (montagem, estoque, reprovado, enviado), localizacao, montador_id (FK), tempo_montagem (int), observacoes, created_at.
-
-Tabela: logs_sistema
-Rastreabilidade de ações sensíveis.
-
-Campos: id, autor_id, acao (CADASTRO, EDICAO, ARQUIVAMENTO), alvo, detalhes (JSONB).
-
-3. Módulos Funcionais Desenvolvidos
-🔐 3.1. Autenticação Híbrida
-Implementamos um sistema de login duplo para atender perfis diferentes:
-
-Administrativo (Master/Gestor): Login via E-mail e Senha (com toggle de "ver senha" e "lembrar de mim").
-
-Operacional (Mecânico): Login simplificado via Matrícula e Teclado Numérico (PIN) para uso em tablets/totens.
-
-📷 3.2. Scanner Inteligente (Porta de Entrada)
-Módulo de leitura de VIN (Chassi) com lógica de decodificação proprietária da Shineray.
-
-Validação: Verifica 17 dígitos.
-
-Decodificação: Identifica WMI (99H -> Shineray), Ano (T -> 2026) e Fábrica (S -> Suape).
-
-Automação: Ao ler, a moto é registrada automaticamente com status montagem e direcionada para a linha correta.
-
-Hardware: Suporta Câmera (Tablet) e Pistola USB.
-
-📊 3.3. Dashboard Operacional (Tempo Real)
-Uma visão "Flash" para o gestor acompanhar o chão de fábrica agora.
-
-KPIs: Produção do Dia, Aprovadas Hoje, Equipe Ativa.
-
-Feed: Lista das últimas 5 motos bipadas/finalizadas.
-
-Design: Cards com identidade visual por cor (status).
-
-📈 3.4. Relatórios & BI (Business Intelligence)
-Módulo estratégico para análise histórica.
-
-Filtros: Hoje, Semana, Mês, Todo Período.
-
-Visualização:
-
-Gráfico de Área (Tendência de Produção).
-
-Gráfico de Pizza (Aprovados vs Reprovados).
-
-Ranking de Técnicos (Barras Horizontais).
-
-Exportação: Botão para gerar Excel (.xlsx) com abas separadas e Impressão PDF.
-
-🛠️ 3.5. Gestão de Equipe
-CRUD completo de funcionários.
-
-Soft Delete: Funcionários não são apagados, apenas arquivados (mantendo histórico de produção).
-
-Metadados: Cálculo automático de "Total de Montagens" e "Tempo Médio" por técnico exibido no card.
-
-📦 3.6. Controle de Estoque
-Listagem avançada de produtos finalizados.
-
-Visual: Cards responsivos com Badges de status (OK, AVARIA).
-
-Busca: Filtro global por Chassi, Modelo ou Cor.
-
-4. UX/UI e Quality of Life (QoL)
-Tema Híbrido: Suporte nativo a Dark Mode e Light Mode com transições suaves (0.5s) em todos os elementos.
-
-Navegação:
-
-Sidebar Retrátil (Desktop).
-
-Menu Sheet/Hambúrguer (Mobile).
-
-Header Inteligente com Avatar e Menu de Usuário.
-
-Scrollbar: Customizada para harmonia visual.
-
-5. Limitações Conhecidas (Motivadores para V2.0)
-Apesar de funcional, a versão 1.5 possui pontos que impedem a escala corporativa, que serão resolvidos na V2.0:
-
-Segurança Crítica: As senhas estão salvas sem criptografia (texto puro) e a sessão é baseada em localStorage, vulnerável a ataques.
-
-Fluxo Rígido: O fluxo atual é Scanner -> Montagem -> Estoque. A realidade da fábrica exige etapas intermediárias (Ex: Qualidade 1, Teste de Rolo, Qualidade Final).
-
-Roles Estáticas: As permissões são verificadas apenas no Front-end (RoleGuard), sem proteção no nível do Banco de Dados (RLS).
+Proprietário: **Shineray By Sabel**. Uso interno restrito.
