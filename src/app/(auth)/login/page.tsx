@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { User, Wrench, ArrowRight, Delete, Loader2, ChevronLeft, Lock, Eye, EyeOff, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -51,13 +51,11 @@ export default function LoginPage() {
 
   // --- HELPER: Ponte de Autenticação (Shadow User) ---
   const autenticarNoSupabase = async (emailFake: string, senhaFake: string, dadosUsuario: Funcionario) => {
-    // 1. Tenta Logar no Auth
     let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email: emailFake,
       password: senhaFake,
     });
 
-    // 2. Se falhar (usuário não existe no Auth ou senha mudou), tenta recriar/sincronizar
     if (authError && (authError.message.includes("Invalid login") || authError.status === 400)) {
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: emailFake,
@@ -72,7 +70,6 @@ export default function LoginPage() {
         });
         
         if (signUpError) console.warn("Aviso: Sincronização Auth falhou, mas login SQL permitido.", signUpError);
-        
         return signUpData.user ? signUpData : authData;
     }
 
@@ -80,7 +77,8 @@ export default function LoginPage() {
   };
 
   // --- LOGIN MECÂNICO ---
-  const loginMecanico = async (pinFinal: string) => {
+  // Envolto em useCallback para ser usado dentro do useEffect
+  const loginMecanico = useCallback(async (pinFinal: string) => {
     setLoading(true);
     
     try {
@@ -119,7 +117,7 @@ export default function LoginPage() {
     } finally {
         setLoading(false);
     }
-  };
+  }, [matricula, router]);
 
   // --- LOGIN GESTOR ---
   const loginGestor = async (e: React.FormEvent) => {
@@ -167,7 +165,10 @@ export default function LoginPage() {
     }
   };
 
-  const handleNumClick = (num: string) => {
+  // --- LÓGICA DO TECLADO VIRTUAL E FÍSICO ---
+  const handleNumClick = useCallback((num: string) => {
+    if (loading) return;
+
     if (stepMecanico === "id") {
       if (matricula.length < 6) setMatricula(p => p + num);
     } else {
@@ -177,7 +178,54 @@ export default function LoginPage() {
         if (novoPin.length === 4) loginMecanico(novoPin);
       }
     }
-  };
+  }, [loading, stepMecanico, matricula, pin, loginMecanico]);
+
+  const handleBackspace = useCallback(() => {
+    if (loading) return;
+    if (stepMecanico === "id") {
+        setMatricula(p => p.slice(0, -1));
+    } else {
+        setPin(p => p.slice(0, -1));
+    }
+  }, [loading, stepMecanico]);
+
+  const handleEnter = useCallback(() => {
+    if (loading) return;
+    if (stepMecanico === "id") {
+        if (matricula.length >= 3) setStepMecanico("senha");
+        else toast.warning("Digite a matrícula");
+    }
+    // No passo de senha, o 4º dígito já dispara o login, então Enter não é estritamente necessário,
+    // mas pode ser adicionado se quiser disparar com menos de 4 dígitos (não recomendado para PIN fixo).
+  }, [loading, stepMecanico, matricula]);
+
+  // --- USE EFFECT: ESCUTA TECLADO FÍSICO ---
+  useEffect(() => {
+    if (perfil !== "mecanico") return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+        // Bloqueia se estiver carregando
+        if (loading) return;
+
+        // Números (0-9)
+        if (/^[0-9]$/.test(e.key)) {
+            handleNumClick(e.key);
+        }
+        
+        // Backspace
+        if (e.key === "Backspace") {
+            handleBackspace();
+        }
+
+        // Enter
+        if (e.key === "Enter") {
+            handleEnter();
+        }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [perfil, loading, handleNumClick, handleBackspace, handleEnter]); // Dependências garantem estado atualizado
 
   return (
     <div className="min-h-screen flex bg-slate-50 dark:bg-slate-950 font-sans selection:bg-red-500/30">
@@ -189,7 +237,6 @@ export default function LoginPage() {
       )}>
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent animate-[pulse_10s_infinite]" />
         
-        {/* ALTERAÇÃO AQUI: Removido o estilo de "caixa de vidro" (bg-white/10, border, p-8, shadow, etc.) */}
         <motion.div layoutId="logo-hero" className="relative z-10 mb-12">
            <Image 
              src="/shineray-logo.png" 
@@ -404,7 +451,7 @@ export default function LoginPage() {
                         </button>
                         <button 
                             type="button" 
-                            onClick={() => stepMecanico === "id" ? setMatricula(p => p.slice(0, -1)) : setPin(p => p.slice(0, -1))} 
+                            onClick={handleBackspace} 
                             disabled={loading} 
                             className="h-16 rounded-xl bg-red-50 dark:bg-red-900/20 border-b-4 border-red-100 dark:border-red-900/40 active:border-b-0 active:translate-y-1 transition-all flex items-center justify-center text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30"
                         >
@@ -414,7 +461,7 @@ export default function LoginPage() {
                     {stepMecanico === "id" && (
                         <Button 
                             type="button" 
-                            onClick={() => matricula.length >= 3 ? setStepMecanico("senha") : toast.warning("Digite a matrícula")} 
+                            onClick={handleEnter} 
                             className="w-full h-14 text-lg font-bold bg-orange-600 hover:bg-orange-700 shadow-lg shadow-orange-600/20 transition-all" 
                             disabled={!matricula}
                         >
