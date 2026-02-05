@@ -7,7 +7,7 @@ import {
   Wrench, Play, Pause, CheckCircle2, AlertTriangle, ArrowRight, RotateCcw, Loader2, Clock, PaintBucket, Armchair, ScanBarcode, Timer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -54,18 +54,22 @@ export default function MontagemPage() {
   // Timer Effect
   useEffect(() => {
       let timer: NodeJS.Timeout;
-      if (motoAtiva && modo === 'producao' && motoAtiva.inicio_montagem) {
+      // O timer só roda se estiver em produção E a moto tiver um início registrado
+      if (motoAtiva && modo === 'producao' && motoAtiva.inicio_montagem && !aguardandoAutorizacao) {
           timer = setInterval(() => {
               const inicio = new Date(motoAtiva.inicio_montagem).getTime();
               const agora = new Date().getTime();
-              const diff = agora - inicio;
+              
+              // Se o tempo for negativo (erro de fuso/ajuste), zera
+              const diff = Math.max(0, agora - inicio);
+              
               const mins = Math.floor(diff / 60000);
               const secs = Math.floor((diff % 60000) / 1000);
               setTempoDecorrido(`${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`);
           }, 1000);
       }
       return () => clearInterval(timer);
-  }, [motoAtiva, modo]);
+  }, [motoAtiva, modo, aguardandoAutorizacao]);
 
   // Salva o checklist localmente
   useEffect(() => {
@@ -92,15 +96,12 @@ export default function MontagemPage() {
     return () => { supabase.removeChannel(channel); };
   }, [aguardandoAutorizacao]);
 
-
-  // 1. Função Corrigida: Busca qualquer moto ativa (inclusive retrabalho que acabou de começar)
   async function verificarEstadoAtual() {
     setLoading(true);
     const user = JSON.parse(localStorage.getItem('sgm_user') || '{}');
     if (!user.id) { setLoading(false); return; }
 
     try {
-        // Busca moto onde sou o montador E o status é de trabalho ativo
         const { data: ativas } = await supabase
           .from('motos')
           .select('*')
@@ -108,20 +109,17 @@ export default function MontagemPage() {
           .in('status', ['em_producao', 'pausado']) 
           .order('updated_at', { ascending: false });
 
-        // Se encontrar alguma moto sendo trabalhada, assume ela
         const ativa = ativas && ativas.length > 0 ? ativas[0] : null;
 
         if (ativa) {
           setMotoAtiva(ativa);
           
-          // Recupera estado dos inputs
           if (ativa.cor) setCorMotoInput(ativa.cor);
           else setCorMotoInput(""); 
 
           if (ativa.cor_banco) setCorBancoInput(ativa.cor_banco);
           else setCorBancoInput(""); 
 
-          // Verifica se tem pausa
           if (ativa.status !== 'pausado') {
              const { data: pendente } = await supabase.from('solicitacoes_pausa').select('id').eq('moto_id', ativa.id).eq('status', 'pendente').maybeSingle();
              setAguardandoAutorizacao(!!pendente);
@@ -129,11 +127,9 @@ export default function MontagemPage() {
              setAguardandoAutorizacao(false);
           }
 
-          // Define o modo correto da tela
           if (ativa.status === 'pausado') setModo('fila');
           else setModo('producao');
           
-          // Recupera checklist
           const salvo = localStorage.getItem(`checklist_${ativa.id}`);
           if (salvo) { setChecklist(JSON.parse(salvo)); } 
           else {
@@ -142,7 +138,6 @@ export default function MontagemPage() {
               setChecklist(checkInicial);
           }
         } else {
-          // Se não achou moto ativa, vai pra fila e carrega as listas
           setMotoAtiva(null);
           setModo('fila');
           await carregarListas(user.id);
@@ -155,14 +150,12 @@ export default function MontagemPage() {
   }
 
   async function carregarListas(userId: string) {
-    // Busca Retrabalhos pendentes
     const { data: retrabalho } = await supabase
         .from('motos')
         .select(`*, supervisor:funcionarios!motos_supervisor_id_fkey(nome)`)
         .eq('status', 'retrabalho_montagem')
-        .eq('montador_id', userId); // Só os meus retrabalhos
+        .eq('montador_id', userId);
 
-    // Busca Caixas Novas
     const { data: caixas } = await supabase
         .from('motos')
         .select('*')
@@ -173,11 +166,9 @@ export default function MontagemPage() {
     if(caixas) setFila(caixas);
   }
 
-  // 2. Função Corrigida: Força a mudança de tela visualmente (Optimistic Update)
   async function iniciarTrabalho(moto: any, ehRetrabalho: boolean) {
     const user = JSON.parse(localStorage.getItem('sgm_user') || '{}');
     
-    // Prepara o objeto atualizado
     const updateData: any = {
         status: 'em_producao',
         montador_id: user.id,
@@ -190,7 +181,6 @@ export default function MontagemPage() {
 
     setLoading(true); 
     
-    // Atualiza no banco
     const { error } = await supabase.from('motos').update(updateData).eq('id', moto.id);
 
     if (error) {
@@ -200,13 +190,10 @@ export default function MontagemPage() {
       toast.success(ehRetrabalho ? "Corrigindo Erro..." : "Montagem Iniciada!");
       await registrarLog('INICIO_MONTAGEM', moto.sku);
       
-      // TRUQUE: Atualiza o estado LOCALMENTE antes de esperar o banco
-      // Isso garante que a tela mude instantaneamente
       const motoAtualizada = { ...moto, ...updateData };
       setMotoAtiva(motoAtualizada);
       setModo('producao');
       
-      // Limpa inputs
       setCorMotoInput(moto.cor || "");
       setCorBancoInput(moto.cor_banco || "");
       
@@ -251,11 +238,10 @@ export default function MontagemPage() {
       await registrarLog('PRODUCAO_FIM', motoAtiva.sku, { cor: corMotoInput, banco: corBancoInput });
       localStorage.removeItem(`checklist_${motoAtiva.id}`);
       
-      // Reseta tudo para voltar pra fila
       setMotoAtiva(null);
       setCorMotoInput(""); setCorBancoInput("");
       setModo('fila');
-      verificarEstadoAtual(); // Recarrega a fila
+      verificarEstadoAtual(); 
     }
   };
 
@@ -268,10 +254,33 @@ export default function MontagemPage() {
       toast.info("Solicitação enviada! Aguarde...");
   };
 
+  // 3. Função Corrigida: Ajusta o timer descontando o tempo pausado
   const handleRetomar = async () => {
-      await supabase.from('motos').update({ status: 'em_producao' }).eq('id', motoAtiva.id);
-      toast.success("Produção Retomada");
-      verificarEstadoAtual(); 
+      try {
+        // 1. Calcula quanto tempo ficou pausado (Agora - Data da Pausa)
+        // O campo updated_at guarda o momento que o supervisor aprovou a pausa
+        const inicioPausa = new Date(motoAtiva.updated_at).getTime();
+        const agora = new Date().getTime();
+        const tempoPausado = agora - inicioPausa;
+
+        // 2. Ajusta o inicio_montagem para frente
+        const inicioOriginal = new Date(motoAtiva.inicio_montagem).getTime();
+        const novoInicio = new Date(inicioOriginal + tempoPausado).toISOString();
+
+        // 3. Atualiza no banco
+        const { error } = await supabase.from('motos').update({ 
+            status: 'em_producao',
+            inicio_montagem: novoInicio 
+        }).eq('id', motoAtiva.id);
+
+        if (error) throw error;
+
+        toast.success("Produção Retomada");
+        verificarEstadoAtual(); 
+      } catch (err) {
+        toast.error("Erro ao retomar produção.");
+        console.error(err);
+      }
   }
 
   if (loading) return (
@@ -294,7 +303,6 @@ export default function MontagemPage() {
               </div>
             </div>
 
-            {/* CARD DE RETOMADA (Pausa) */}
             {motoAtiva && motoAtiva.status === 'pausado' && (
                 <div className="mb-8 animate-in slide-in-from-top-4 duration-500">
                     <Card className="border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-900/20 shadow-xl">
@@ -304,6 +312,7 @@ export default function MontagemPage() {
                                 <div>
                                     <h3 className="text-xl font-bold text-slate-900 dark:text-white">Produção Pausada</h3>
                                     <p className="text-slate-500">{motoAtiva.modelo} - {motoAtiva.sku}</p>
+                                    <p className="text-xs text-amber-600 mt-1 font-bold">O timer continuará de onde parou ao retomar.</p>
                                 </div>
                              </div>
                              <Button onClick={handleRetomar} className="h-12 text-lg font-bold bg-amber-600 hover:bg-amber-700 text-white">
@@ -314,7 +323,6 @@ export default function MontagemPage() {
                 </div>
             )}
 
-            {/* SEÇÃO DE RETRABALHO */}
             {filaRetrabalho.length > 0 && (
                 <div className="mb-8">
                     <h3 className="text-lg font-bold text-red-600 mb-4 flex items-center gap-2">
@@ -340,7 +348,6 @@ export default function MontagemPage() {
                 </div>
             )}
 
-            {/* SEÇÃO: FILA NORMAL */}
             <div className={motoAtiva && motoAtiva.status === 'pausado' ? 'opacity-40 pointer-events-none grayscale' : ''}>
                 <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
                     <Wrench className="w-5 h-5" /> Fila de Produção
@@ -372,7 +379,6 @@ export default function MontagemPage() {
           </>
         )}
 
-        {/* MODO PRODUÇÃO */}
         {modo === 'producao' && motoAtiva && (
           <div className="max-w-4xl mx-auto">
              <div className={`
@@ -404,6 +410,7 @@ export default function MontagemPage() {
                         <Loader2 className="w-16 h-16 text-blue-600 animate-spin mb-4" />
                         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Solicitação Enviada!</h2>
                         <p className="text-slate-500 text-lg">Aguarde a liberação do supervisor...</p>
+                        <p className="text-xs text-slate-400 mt-2">O timer será pausado assim que autorizado.</p>
                     </div>
                 )}
 
@@ -442,12 +449,17 @@ export default function MontagemPage() {
                             <label className="text-sm font-bold">Cor da Carenagem</label>
                             <Select value={corMotoInput} onValueChange={setCorMotoInput}>
                                 <SelectTrigger className="h-12 bg-white dark:bg-slate-900"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="max-h-[200px]">
                                     <SelectItem value="Vermelha">🔴 Vermelha</SelectItem>
-                                    <SelectItem value="Preta">⚫ Preta</SelectItem>
-                                    <SelectItem value="Branca">⚪ Branca</SelectItem>
+                                    <SelectItem value="Preta">⚫ Preta Brilhante</SelectItem>
+                                    <SelectItem value="Preta Fosca">⚫ Preta Fosca</SelectItem>
+                                    <SelectItem value="Branca">⚪ Branca Sólida</SelectItem>
+                                    <SelectItem value="Branca Pérola">⚪ Branca Pérola</SelectItem>
                                     <SelectItem value="Azul">🔵 Azul</SelectItem>
-                                    <SelectItem value="Cinza">🔘 Cinza</SelectItem>
+                                    <SelectItem value="Cinza">🔘 Cinza / Prata</SelectItem>
+                                    <SelectItem value="Cinza Nardo">🔘 Cinza Nardo (Sólido)</SelectItem>
+                                    <SelectItem value="Verde Militar">🟢 Verde Militar</SelectItem>
+                                    <SelectItem value="Amarela">🟡 Amarela</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -457,8 +469,9 @@ export default function MontagemPage() {
                                 <SelectTrigger className="h-12 bg-white dark:bg-slate-900"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="Preto">⚫ Preto</SelectItem>
-                                    <SelectItem value="Marrom">🟤 Marrom</SelectItem>
-                                    <SelectItem value="Bege">⚪ Bege</SelectItem>
+                                    <SelectItem value="Marrom">🟤 Marrom Escuro</SelectItem>
+                                    <SelectItem value="Marrom Claro">🟤 Marrom Claro / Tabaco</SelectItem>
+                                    <SelectItem value="Bege">⚪ Bege / Caramelo</SelectItem>
                                     <SelectItem value="Vermelho">🔴 Vermelho</SelectItem>
                                 </SelectContent>
                             </Select>

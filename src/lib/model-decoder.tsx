@@ -3,6 +3,10 @@
 // Mapeamento extraído do arquivo motos_import.csv
 // A chave é o VDS (caracteres da posição 3 a 8 do chassi)
 const VDS_MAP: Record<string, string> = {
+    // Novos Modelos 2026
+    'NJ1125': 'JET 125 2026',
+
+    // Modelos Existentes
     'JTS050': 'JET 50 (S)',
     'PHS050': 'PHOENIX 50 (S)',
     'ATV200': 'QUADRICICLO ATV 200',
@@ -45,14 +49,11 @@ export function identificarModelo(codigo: string): string {
     if (!codigo || codigo.length < 9) return "Modelo Desconhecido";
     
     // Tenta identificar pelo padrão VDS (Shineray começa com 99H...)
-    // Ex: 99H PHS050 RS... -> PHS050 é o identificador
-    
     // Normaliza para maiúsculo
     const upperCode = codigo.toUpperCase();
     
-    // Se o código for muito curto mas estiver no mapa direto (SKU curto)
     // Extrai o VDS. Normalmente posições 3 a 8 (0-based) se for VIN completo
-    // Ex: 99H[PHS050]RS...
+    // Ex: 99H[NJ1125]TS... -> NJ1125
     const vds = upperCode.substring(3, 9);
     
     if (VDS_MAP[vds]) {
