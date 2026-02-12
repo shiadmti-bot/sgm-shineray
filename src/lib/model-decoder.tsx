@@ -24,6 +24,7 @@ const VDS_MAP: Record<string, string> = {
     'R1C125': 'RIO 125',
     'JF1150': 'JEF 150 S',
     'JFF150': 'JEF 150 S EFI',
+    'JF2150': 'JEF 150s EFI 2026',
     'URF150': 'URBAN 150 EFI',
     'FRF150': 'FREE 150 EFI',
     'SHF250': 'SHI 250 EFI',

@@ -13,49 +13,48 @@ import { Badge } from "@/components/ui/badge";
 
 export function CentralSolicitacoes() {
   const [solicitacoes, setSolicitacoes] = useState<any[]>([]);
-  const [isGestor, setIsGestor] = useState(false);
+  const [isGestor, setIsGestor] = useState(false); // Começa falso por segurança
   const [isOpen, setIsOpen] = useState(false);
 
-  // 1. Inicialização e Permissão (RBAC)
   useEffect(() => {
     const userStr = localStorage.getItem('sgm_user');
-    if (!userStr) return;
+    
+    // 1. BLOQUEIO IMEDIATO: Se não tiver usuário, para tudo.
+    if (!userStr) {
+        setIsGestor(false);
+        return;
+    }
     
     try {
         const user = JSON.parse(userStr);
-        
-        // --- FILTRO DE SEGURANÇA ---
-        // Se não for da gestão, encerra aqui. O componente não fará nada.
-        if (!['gestor', 'supervisor', 'master'].includes(user.cargo)) {
+        const cargo = user.cargo?.toLowerCase(); // Normaliza para minúsculo
+
+        // 2. FILTRO DE SEGURANÇA (WHITELIST)
+        // Se o cargo não estiver nesta lista, o componente morre aqui.
+        if (!['gestor', 'supervisor', 'master'].includes(cargo)) {
+            setIsGestor(false);
             return;
         }
         
-        // Se passou, marca como gestor e inicia o monitoramento
+        // Se passou, libera a visualização e conecta no banco
         setIsGestor(true);
         fetchSolicitacoesPendentes();
 
-        // 2. Realtime: Escuta a tabela de solicitações
         const channel = supabase
           .channel('central-solicitacoes')
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'solicitacoes_pausa' },
             (payload) => {
-              // Nova solicitação chegando (INSERT)
               if (payload.eventType === 'INSERT' && payload.new.status === 'pendente') {
-                  fetchSolicitacoesPendentes(); // Recarrega para pegar os Joins (nomes)
+                  fetchSolicitacoesPendentes(); 
                   tocarSomNotificacao();
                   toast("Nova solicitação de pausa!", { 
                       icon: <BellRing className="w-4 h-4 text-orange-500"/>,
-                      action: {
-                        label: "Ver",
-                        onClick: () => setIsOpen(true)
-                      }
+                      action: { label: "Ver", onClick: () => setIsOpen(true) }
                   });
               }
-              // Solicitação tratada por outro gestor (UPDATE)
               else if (payload.eventType === 'UPDATE' && payload.new.status !== 'pendente') {
-                  // Remove da lista localmente
                   setSolicitacoes(prev => prev.filter(s => s.id !== payload.new.id));
               }
             }
@@ -65,21 +64,21 @@ export function CentralSolicitacoes() {
         return () => { supabase.removeChannel(channel); };
 
     } catch (e) {
-        console.error("Erro ao validar permissão:", e);
+        console.error("Erro de permissão:", e);
+        setIsGestor(false);
     }
   }, []);
 
-  // Abre modal automaticamente se houver itens (opcional)
+  // Fecha o modal se a lista esvaziar
   useEffect(() => {
-      // if (solicitacoes.length > 0 && !isOpen) setIsOpen(true); 
+       if (solicitacoes.length === 0) setIsOpen(false); 
   }, [solicitacoes]);
 
   const tocarSomNotificacao = () => {
-    // Implementação simples de beep (opcional)
     try {
-        const audio = new Audio('/notification.mp3'); // Certifique-se de ter este arquivo ou remova
-        audio.play().catch(() => console.log("Áudio bloqueado pelo navegador"));
-    } catch (e) { /* Ignora erro de áudio */ }
+        const audio = new Audio('/notification.mp3'); 
+        audio.play().catch(() => {});
+    } catch (e) { }
   };
 
   const fetchSolicitacoesPendentes = async () => {
@@ -100,31 +99,23 @@ export function CentralSolicitacoes() {
     const userStr = localStorage.getItem('sgm_user');
     const user = userStr ? JSON.parse(userStr) : null;
 
-    // UI Otimista: Remove da tela imediatamente
     setSolicitacoes(prev => prev.filter(s => s.id !== id));
-    if (solicitacoes.length <= 1) setIsOpen(false); // Fecha modal se for a última
 
     try {
         if (aprovado) {
-            // 1. Atualiza status da moto para PAUSADO
             await supabase.from('motos').update({ status: 'pausado' }).eq('id', solicitacao.moto_id);
-            
-            // 2. Registra histórico da pausa (tabela auxiliar para métricas)
             await supabase.from('pausas_producao').insert({
                 moto_id: solicitacao.moto_id,
                 montador_id: solicitacao.montador_id,
                 motivo: solicitacao.motivo,
-                inicio: new Date().toISOString() // O fim será preenchido quando retomar
+                inicio: new Date().toISOString()
             });
-
-            // 3. Log de Auditoria
             await registrarLog('PAUSA_MONTAGEM', solicitacao.moto?.sku || 'N/A', { 
                 motivo: solicitacao.motivo, 
                 autorizado_por: user?.nome 
             });
         }
 
-        // 4. Finaliza a solicitação na tabela de controle
         const { error } = await supabase
             .from('solicitacoes_pausa')
             .update({
@@ -138,33 +129,33 @@ export function CentralSolicitacoes() {
         toast.success(aprovado ? "Pausa Autorizada" : "Solicitação Negada");
 
     } catch (err) {
-        console.error(err);
-        toast.error("Erro ao processar. Tente novamente.");
-        fetchSolicitacoesPendentes(); // Reverte UI em caso de erro
+        toast.error("Erro ao processar.");
+        fetchSolicitacoesPendentes();
     }
   };
 
-  // Se não for gestor ou não tiver solicitações, não renderiza nada (invisível)
+  // --- TRAVA FINAL ---
+  // Se não for gestor, retorna NULL (não renderiza nada no DOM)
+  // Se for gestor mas não tiver solicitações, também não renderiza o botão
   if (!isGestor || solicitacoes.length === 0) return null;
 
   return (
     <>
-      {/* FAB (Botão Flutuante) */}
-      <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 fade-in duration-500">
+      {/* Botão Flutuante (Fixo e Z-Index alto) */}
+      <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-bottom-4 fade-in duration-500">
         <Button 
             onClick={() => setIsOpen(true)}
-            className="h-14 w-14 rounded-full bg-red-600 hover:bg-red-700 shadow-2xl border-4 border-white dark:border-slate-900 flex flex-col items-center justify-center relative ring-2 ring-red-500/50 ring-offset-2"
+            className="h-16 w-16 rounded-full bg-red-600 hover:bg-red-700 shadow-[0_0_20px_rgba(220,38,38,0.5)] border-4 border-white dark:border-slate-900 flex flex-col items-center justify-center relative ring-2 ring-red-500/50 ring-offset-2 transition-transform hover:scale-110 active:scale-95"
         >
-            <BellRing className="w-6 h-6 text-white animate-pulse" />
-            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-black text-red-600 border border-red-100">
+            <BellRing className="w-7 h-7 text-white animate-[wiggle_1s_ease-in-out_infinite]" />
+            <span className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-black text-red-600 border-2 border-red-100 shadow-sm">
                 {solicitacoes.length}
             </span>
         </Button>
       </div>
 
-      {/* MODAL DE GERENCIAMENTO */}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-2xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+        <DialogContent className="max-w-2xl bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 z-[110]">
             <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-xl text-slate-900 dark:text-white">
                     <BellRing className="w-5 h-5 text-red-600" />
@@ -178,7 +169,6 @@ export function CentralSolicitacoes() {
             <div className="max-h-[60vh] overflow-y-auto pr-2 space-y-3 mt-4">
                 {solicitacoes.map((sol) => (
                     <div key={sol.id} className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
-                        
                         <div className="space-y-2 w-full md:w-auto">
                             <div className="flex flex-wrap items-center gap-2">
                                 <Badge variant="outline" className="font-bold flex gap-1 items-center bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300">
@@ -188,7 +178,6 @@ export function CentralSolicitacoes() {
                                     <Clock className="w-3 h-3"/> {new Date(sol.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                 </span>
                             </div>
-                            
                             <div>
                                 <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                                     {sol.moto?.modelo}
@@ -199,20 +188,11 @@ export function CentralSolicitacoes() {
                                 </div>
                             </div>
                         </div>
-
                         <div className="flex gap-2 w-full md:w-auto pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800">
-                            <Button 
-                                size="sm" variant="ghost" 
-                                className="flex-1 md:flex-none text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                                onClick={() => responder(sol.id, false, sol)}
-                            >
+                            <Button size="sm" variant="ghost" className="flex-1 md:flex-none text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => responder(sol.id, false, sol)}>
                                 <XCircle className="w-4 h-4 mr-2"/> Negar
                             </Button>
-                            <Button 
-                                size="sm" 
-                                className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white font-bold shadow-lg shadow-green-600/20"
-                                onClick={() => responder(sol.id, true, sol)}
-                            >
+                            <Button size="sm" className="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white font-bold shadow-lg shadow-green-600/20" onClick={() => responder(sol.id, true, sol)}>
                                 <CheckCircle2 className="w-4 h-4 mr-2"/> Autorizar
                             </Button>
                         </div>
