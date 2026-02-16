@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "sonner";
-import { CentralSolicitacoes } from "@/components/CentralSolicitacoes";
 import type { Viewport } from 'next';
 
 export const viewport: Viewport = {
@@ -45,9 +44,6 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {/* 2. Componente de Alertas Globais (Escuta o banco em tempo real) */}
-          <CentralSolicitacoes />
-
           {children}
           
           <Toaster />
