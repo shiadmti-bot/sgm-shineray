@@ -34,7 +34,10 @@ const VDS_MAP: Record<string, string> = {
   TTF250: "TITANIUM EFI",
   DVF250: "DENVER EFI",
   ARF250: "IRON EFI",
-  STF200: "STORM 200",
+    'STF200': 'STORM 200 EFI', // Refinado para EFI
+    'WKR125': 'WORKER 125',    // Adicionado Worker
+    'WKR150': 'WORKER 150',
+    'WKF125': 'WORKER 125 EFI',
   DRF012: "DRIFT 01",
   PTXR20: "PTXR",
   SH3800: "SCOOTER SH3",
@@ -93,7 +96,8 @@ function decodificarGenerico(vds: string): string | null {
   else if (prefixo.startsWith("AR")) familia = "IRON";
   else if (prefixo.startsWith("ST")) familia = "STORM";
   else if (prefixo.startsWith("DR")) familia = "DRIFT";
-  else if (prefixo.startsWith("PT")) familia = "SCOOTER PT";
+    else if (prefixo.startsWith("PT")) familia = "SCOOTER PT";
+    else if (prefixo.startsWith("WK")) familia = "WORKER"; // Adicionado suporte genérico para Worker
 
   if (!familia) return null;
 

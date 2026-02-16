@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { 
-  Wrench, Play, Pause, CheckCircle2, AlertTriangle, ArrowRight, RotateCcw, Loader2, Clock, PaintBucket, Armchair, ScanBarcode, Timer
+  Wrench, Play, Pause, CheckCircle2, AlertTriangle, ArrowRight, RotateCcw, Loader2, Clock, PaintBucket, Armchair, ScanBarcode, Timer, Trash2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -283,6 +283,24 @@ export default function MontagemPage() {
       }
   }
 
+  async function handleExcluirMoto(moto: any) {
+     if (!confirm(`Tem certeza que deseja remover a moto ${moto.modelo} (${moto.sku}) da linha?`)) return;
+
+     setLoading(true);
+     const { error } = await supabase.from('motos').delete().eq('id', moto.id);
+     
+     if (error) {
+         toast.error("Erro ao excluir.");
+     } else {
+         toast.success("Moto removida da linha.");
+         // Atualiza a lista localmente para feedback instantâneo
+         setFila(prev => prev.filter(m => m.id !== moto.id));
+     }
+     setLoading(false);
+  }
+
+  const ExclusaoDialog = () => null; // Placeholder se quiser usar dialog depois
+
   if (loading) return (
     <div className="p-8 flex flex-col items-center justify-center h-full space-y-4">
         <Skeleton className="h-64 w-full rounded-2xl" />
@@ -302,6 +320,9 @@ export default function MontagemPage() {
                 <p className="text-slate-500">Selecione uma tarefa para iniciar.</p>
               </div>
             </div>
+
+            {/* Função de Exclusão */}
+            <ExclusaoDialog />
 
             {motoAtiva && motoAtiva.status === 'pausado' && (
                 <div className="mb-8 animate-in slide-in-from-top-4 duration-500">
@@ -367,9 +388,14 @@ export default function MontagemPage() {
                             </div>
                             <h3 className="text-xl font-bold mb-1">{moto.modelo}</h3>
                             <p className="text-slate-500 text-sm mb-6">{moto.localizacao || 'Sem local'}</p>
-                            <Button onClick={() => iniciarTrabalho(moto, false)} className="w-full bg-slate-900 text-white font-bold">
-                                <Play className="w-4 h-4 mr-2" /> INICIAR MONTAGEM
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button onClick={() => iniciarTrabalho(moto, false)} className="flex-1 bg-slate-900 text-white font-bold">
+                                    <Play className="w-4 h-4 mr-2" /> INICIAR
+                                </Button>
+                                <Button variant="destructive" size="icon" onClick={() => handleExcluirMoto(moto)} title="Remover da Linha">
+                                    <Trash2 className="w-4 h-4" />
+                                </Button>
+                            </div>
                         </CardContent>
                     </Card>
                     ))

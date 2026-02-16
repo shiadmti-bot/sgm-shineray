@@ -62,10 +62,14 @@ export default function ScannerPage() {
   const processarChassi = async (chassiLido: string) => {
     const chassi = chassiLido.toUpperCase().trim();
 
-    // Validação Básica
-    if (chassi.length < 9) { // Aceita VIN ou SKU curto se configurado
-      toast.warning("Código inválido: Muito curto.");
-      return;
+    // Validação de Vin (Chassis) - Deve ter 17 caracteres
+    if (chassi.length !== 17) {
+        if (chassi.length > 5 && chassi.length < 15) {
+             toast.error("Isso parece um MOTOR!", { description: "Por favor, escaneie o código do CHASSI (17 dígitos)." });
+        } else {
+             toast.warning(`Código inválido (${chassi.length} caracteres)`, { description: "O chassi deve ter exatamente 17 dígitos." });
+        }
+        return;
     }
 
     setLoading(true);
