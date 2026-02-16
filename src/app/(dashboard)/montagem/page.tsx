@@ -449,15 +449,18 @@ export default function MontagemPage() {
                             <label className="text-sm font-bold">Cor da Carenagem</label>
                             <Select value={corMotoInput} onValueChange={setCorMotoInput}>
                                 <SelectTrigger className="h-12 bg-white dark:bg-slate-900"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                                <SelectContent className="max-h-[200px]">
-                                    <SelectItem value="Vermelha">🔴 Vermelha</SelectItem>
+                                <SelectContent className="max-h-[300px]">
+                                    <SelectItem value="Vermelha">🔴 Vermelha (Padrão)</SelectItem>
+                                    <SelectItem value="Vermelha Fosca">🔴 Vermelha Fosca (Iron/Titanium)</SelectItem>
                                     <SelectItem value="Preta">⚫ Preta Brilhante</SelectItem>
                                     <SelectItem value="Preta Fosca">⚫ Preta Fosca</SelectItem>
                                     <SelectItem value="Branca">⚪ Branca Sólida</SelectItem>
                                     <SelectItem value="Branca Pérola">⚪ Branca Pérola</SelectItem>
+                                    <SelectItem value="Bege">🟤 Bege (New Jet 2026)</SelectItem>
                                     <SelectItem value="Azul">🔵 Azul</SelectItem>
                                     <SelectItem value="Cinza">🔘 Cinza / Prata</SelectItem>
                                     <SelectItem value="Cinza Nardo">🔘 Cinza Nardo (Sólido)</SelectItem>
+                                    <SelectItem value="Cinza Fosco">🔘 Cinza Fosco (JEF 150s)</SelectItem>
                                     <SelectItem value="Verde Militar">🟢 Verde Militar</SelectItem>
                                     <SelectItem value="Amarela">🟡 Amarela</SelectItem>
                                 </SelectContent>
@@ -468,6 +471,7 @@ export default function MontagemPage() {
                             <Select value={corBancoInput} onValueChange={setCorBancoInput}>
                                 <SelectTrigger className="h-12 bg-white dark:bg-slate-900"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="Azul">🔵 Azul</SelectItem>
                                     <SelectItem value="Preto">⚫ Preto</SelectItem>
                                     <SelectItem value="Marrom">🟤 Marrom Escuro</SelectItem>
                                     <SelectItem value="Marrom Claro">🟤 Marrom Claro / Tabaco</SelectItem>
