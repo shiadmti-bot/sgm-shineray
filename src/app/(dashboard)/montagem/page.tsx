@@ -463,6 +463,7 @@ export default function MontagemPage() {
                                     <SelectItem value="Cinza Fosco">🔘 Cinza Fosco (JEF 150s)</SelectItem>
                                     <SelectItem value="Verde Militar">🟢 Verde Militar</SelectItem>
                                     <SelectItem value="Amarela">🟡 Amarela</SelectItem>
+                                    <SelectItem value="Laranja">🟠 Laranja</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -477,6 +478,8 @@ export default function MontagemPage() {
                                     <SelectItem value="Marrom Claro">🟤 Marrom Claro / Tabaco</SelectItem>
                                     <SelectItem value="Bege">⚪ Bege / Caramelo</SelectItem>
                                     <SelectItem value="Vermelho">🔴 Vermelho</SelectItem>
+                                    <SelectItem value="Vinho">🟣 Vinho</SelectItem>
+                                    <SelectItem value="Cinza">🔘 Cinza</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
