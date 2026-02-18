@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { 
-  Warehouse, Search, Filter, Truck, CheckCircle2, FileJson, Calendar, User, PaintBucket, Tag
+  Warehouse, Search, Filter, Truck, CheckCircle2, FileJson, Calendar, User, PaintBucket, Tag, AlertCircle, Wrench, RotateCcw
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,10 @@ export default function EstoquePage() {
   const [filtroModelo, setFiltroModelo] = useState("todos");
   const [filtroCor, setFiltroCor] = useState("todas");
   const [motoSaida, setMotoSaida] = useState<any>(null);
+  
+  // Estados para Detalhes
+  const [motoDetalhes, setMotoDetalhes] = useState<any>(null);
+  const [historicoAvarias, setHistoricoAvarias] = useState<any[]>([]);
 
   useEffect(() => {
     fetchEstoque();
@@ -56,6 +60,20 @@ export default function EstoquePage() {
         setMotoSaida(null);
         fetchEstoque();
     }
+  };
+
+  const handleVerDetalhes = async (moto: any) => {
+      setMotoDetalhes(moto);
+      setHistoricoAvarias([]); // Limpa anterior
+
+      // Busca histórico de avarias desta moto
+      const { data } = await supabase
+        .from('historico_avarias')
+        .select('*')
+        .eq('moto_id', moto.id)
+        .order('created_at', { ascending: false });
+
+      if (data) setHistoricoAvarias(data);
   };
 
   // Extrai listas únicas para os filtros
@@ -206,19 +224,90 @@ export default function EstoquePage() {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-2">
-                                                <Dialog>
+                                                <Dialog open={!!motoDetalhes && motoDetalhes.id === moto.id} onOpenChange={(open) => !open && setMotoDetalhes(null)}>
                                                     <DialogTrigger asChild>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50">
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50" onClick={() => handleVerDetalhes(moto)}>
                                                             <FileJson className="w-4 h-4"/>
                                                         </Button>
                                                     </DialogTrigger>
-                                                    <DialogContent>
-                                                        <DialogHeader><DialogTitle>Ficha Técnica: {moto.modelo}</DialogTitle></DialogHeader>
-                                                        <div className="grid grid-cols-2 gap-4 text-sm mt-4">
-                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Chassi</p><p className="font-mono">{moto.sku}</p></div>
-                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Cores</p><p>{moto.cor} / {moto.cor_banco}</p></div>
-                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Local</p><p>{moto.localizacao}</p></div>
-                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Entrada</p><p>{new Date(moto.created_at).toLocaleString()}</p></div>
+                                                    <DialogContent className="max-w-2xl bg-white dark:bg-slate-950">
+                                                        <DialogHeader>
+                                                            <DialogTitle className="flex items-center gap-2">
+                                                                <FileJson className="w-5 h-5 text-blue-600"/>
+                                                                Ficha Técnica: {moto.modelo}
+                                                            </DialogTitle>
+                                                        </DialogHeader>
+                                                        
+                                                        <div className="grid grid-cols-2 gap-4 text-sm mt-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Chassi (VIN)</p><p className="font-mono text-lg font-bold">{moto.sku}</p></div>
+                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Cores</p><div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full border border-slate-200" style={{backgroundColor: moto.cor === 'Preta' ? '#000' : moto.cor === 'Vermelha' ? '#ef4444' : moto.cor === 'Branca' ? '#fff' : '#94a3b8'}}></div> <p>{moto.cor} / {moto.cor_banco}</p></div></div>
+                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Local Atual</p><p className="font-medium">{moto.localizacao}</p></div>
+                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Data de Entrada</p><p>{new Date(moto.created_at).toLocaleString()}</p></div>
+                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Montador</p><p>{moto.montador?.nome || 'N/A'}</p></div>
+                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">QA Supervisor</p><p>{moto.supervisor?.nome || 'N/A'}</p></div>
+                                                        </div>
+
+                                                        {/* Seção de Avarias e Retrabalhos */}
+                                                        <div className="mt-4 space-y-3">
+                                                            <h4 className="text-sm font-bold flex items-center gap-2 text-slate-800 dark:text-slate-200">
+                                                                <Wrench className="w-4 h-4"/> Histórico de Qualidade
+                                                            </h4>
+                                                            
+                                                            {motoDetalhes?.rework_count > 0 && (
+                                                                <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg border border-amber-100 dark:border-amber-800 flex items-center gap-3">
+                                                                    <RotateCcw className="w-5 h-5 text-amber-600"/>
+                                                                    <div className="text-sm">
+                                                                        <span className="font-bold text-amber-700 dark:text-amber-400">Retrabalho Registrado</span>
+                                                                        <p className="text-slate-600 dark:text-slate-400 text-xs">Esta moto retornou <strong>{motoDetalhes.rework_count}x</strong> para a linha de montagem.</p>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Exibe reparo armazenado na própria moto (Backup ou Legado) */}
+                                                            {motoDetalhes?.tecnico_reparo && (
+                                                                <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800 text-sm">
+                                                                    <div className="flex items-center gap-2 mb-1 font-bold text-blue-700 dark:text-blue-400">
+                                                                        <Wrench className="w-4 h-4"/> Último Reparo (Oficina)
+                                                                    </div>
+                                                                    <p className="text-slate-600 dark:text-slate-300">
+                                                                        {motoDetalhes.observacoes || "Sem detalhes adicionais."}
+                                                                    </p>
+                                                                    <div className="mt-2 text-xs text-blue-600 dark:text-blue-500 font-mono">
+                                                                        Técnico: {motoDetalhes.tecnico_reparo}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {historicoAvarias.length > 0 ? (
+                                                                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                                                                    {historicoAvarias.map((av, idx) => (
+                                                                        <div key={idx} className="bg-red-50 dark:bg-red-900/10 p-3 rounded-lg border border-red-100 dark:border-red-900/30 text-sm">
+                                                                            <div className="flex justify-between items-start mb-1">
+                                                                                <span className="font-bold text-red-700 dark:text-red-400 capitalize">{av.tipo_avaria.replace('avaria_', '').replace('_', ' ')}</span>
+                                                                                <span className="text-[10px] text-slate-400">{new Date(av.created_at).toLocaleDateString()}</span>
+                                                                            </div>
+                                                                            <p className="text-slate-600 dark:text-slate-300">"{av.descricao_problema}"</p>
+                                                                            {av.descricao_solucao && (
+                                                                                <p className="text-xs text-green-700 dark:text-green-400 mt-1 pl-2 border-l-2 border-green-200 dark:border-green-800">
+                                                                                    <strong>Solução:</strong> {av.descricao_solucao}
+                                                                                </p>
+                                                                            )}
+                                                                            {av.data_resolucao && (
+                                                                                <div className="mt-2 pt-2 border-t border-red-100 dark:border-red-900/30 flex items-center gap-2 text-xs text-green-700 dark:text-green-500">
+                                                                                    <CheckCircle2 className="w-3 h-3"/> Resolvido por {av.tecnico_nome} em {new Date(av.data_resolucao).toLocaleDateString()}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                !motoDetalhes?.rework_count && !motoDetalhes?.tecnico_reparo && (
+                                                                    <div className="text-center py-4 text-slate-400 text-sm bg-slate-50 dark:bg-slate-900/50 rounded-lg">
+                                                                        <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-20"/>
+                                                                        Nenhuma avaria ou defeito registrado.
+                                                                    </div>
+                                                                )
+                                                            )}
                                                         </div>
                                                     </DialogContent>
                                                 </Dialog>

@@ -27,6 +27,7 @@ const COLORS = {
   ok: "#22c55e",      // Verde (Aprovado)
   avaria: "#ef4444",  // Vermelho (Defeito)
   warning: "#f59e0b", // Amarelo (Retrabalho)
+  pause: "#8b5cf6",   // Roxo (Pausas)
   line: "#64748b"     // Linha de tendência
 };
 
@@ -84,11 +85,17 @@ export default function RelatoriosPage() {
         const motos = data || [];
         setRawData(motos);
 
+        // Busca Pausas
+        const { data: pausasData } = await supabase
+            .from('pausas_producao')
+            .select('*')
+            .gte('inicio', dataInicio.toISOString());
+
         // 3. Processamento em Cadeia
         processarTimeline(motos, dataInicio, periodo); // O Gráfico Novo
         processarFunil(motos);
         processarAvarias(motos);
-        processarTecnicos(motos);
+        processarTecnicos(motos, pausasData || []);
         calcularKPIs(motos);
 
     } catch (error) {
@@ -188,15 +195,43 @@ export default function RelatoriosPage() {
       setAvariasData(Object.entries(mapa).map(([name, value]) => ({ name, value })).filter(d => d.value > 0)); 
   }
 
-  function processarTecnicos(motos: any[]) {
+  function processarTecnicos(motos: any[], pausas: any[]) {
       const stats: Record<string, any> = {};
+      
+      // Contagem de Motos
       motos.forEach(m => {
           if (!m.montador?.nome) return;
           const nome = m.montador.nome.split(' ')[0]; // Só o primeiro nome
-          if (!stats[nome]) stats[nome] = { nome, total: 0, retrabalhos: 0 };
+          const id = m.montador_id || nome; // Fallback se não tiver ID (improvável)
+          
+          if (!stats[nome]) stats[nome] = { nome, total: 0, retrabalhos: 0, pausas: 0, mediaPausas: "0.0" };
           stats[nome].total++;
           if (m.rework_count > 0) stats[nome].retrabalhos++;
       });
+
+      // Contagem de Pausas
+      pausas.forEach(p => {
+          // Precisamos associar a pausa ao montador. 
+          // O objeto 'p' tem montador_id. Precisamos achar o nome correspondente nos stats ou buscar.
+          // Como `stats` é indexado por NOME (para o gráfico), vamos tentar achar pelo ID no array de motos 
+          // ou simplificar assumindo que temos o nome no objeto p se fizéssemos join, mas não fizemos.
+          // Estratégia: Varrer motos para mapear ID -> Nome.
+          const montador = motos.find(m => m.montador_id === p.montador_id)?.montador;
+          if (montador) {
+             const nome = montador.nome.split(' ')[0];
+             if (stats[nome]) {
+                 stats[nome].pausas++;
+             }
+          }
+      });
+
+      // Calcular Médias
+      Object.values(stats).forEach((s: any) => {
+          if (s.total > 0) {
+              s.mediaPausas = (s.pausas / s.total).toFixed(2);
+          }
+      });
+
       setTecnicosData(Object.values(stats).sort((a,b) => b.total - a.total).slice(0, 10));
   }
 
@@ -367,7 +402,25 @@ export default function RelatoriosPage() {
                                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} opacity={0.1} />
                                 <XAxis type="number" hide />
                                 <YAxis dataKey="nome" type="category" width={100} tick={{fontSize: 12}} />
-                                <Tooltip cursor={{fill: 'transparent'}} />
+                                <Tooltip 
+                                    cursor={{fill: 'transparent'}} 
+                                    content={({ active, payload }) => {
+                                        if (active && payload && payload.length) {
+                                            const data = payload[0].payload;
+                                            return (
+                                                <div className="bg-slate-900 text-white text-xs p-2 rounded shadow-xl">
+                                                    <p className="font-bold mb-1">{data.nome}</p>
+                                                    <p>Montagens: {data.total}</p>
+                                                    <p className="text-amber-400">Retrabalhos: {data.retrabalhos}</p>
+                                                    <hr className="my-1 border-slate-700"/>
+                                                    <p className="text-purple-300">Total Pausas: {data.pausas}</p>
+                                                    <p className="font-bold text-purple-400">Média: {data.mediaPausas} / moto</p>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    }}
+                                />
                                 <Bar dataKey="total" name="Total Montado" fill={COLORS.prod} radius={[0, 4, 4, 0]} barSize={20}>
                                     <LabelList dataKey="total" position="right" fontSize={12} />
                                 </Bar>
