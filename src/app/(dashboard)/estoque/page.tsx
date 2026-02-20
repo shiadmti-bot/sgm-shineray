@@ -16,6 +16,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { registrarLog } from "@/lib/logger";
 
+const getHexColor = (colorName: string) => {
+    if (!colorName) return '#94a3b8';
+    const lower = colorName.toLowerCase();
+    if (lower.includes('preta fosca')) return '#27272a';
+    if (lower.includes('preta')) return '#000000';
+    if (lower.includes('branca')) return '#ffffff';
+    if (lower.includes('vermelha fosca')) return '#991b1b';
+    if (lower.includes('vermelha')) return '#ef4444';
+    if (lower.includes('azul fosco')) return '#1e3a8a';
+    if (lower.includes('azul')) return '#3b82f6';
+    if (lower.includes('amarela')) return '#eab308';
+    if (lower.includes('verde')) return '#22c55e';
+    if (lower.includes('bege')) return '#d6d3d1';
+    if (lower.includes('prata')) return '#cbd5e1';
+    if (lower.includes('nardo') || lower.includes('cinza')) return '#64748b';
+    if (lower.includes('marrom')) return '#78350f';
+    if (lower.includes('laranja')) return '#f97316';
+    return '#94a3b8';
+};
+
 export default function EstoquePage() {
   const [motos, setMotos] = useState<any[]>([]);
   const [busca, setBusca] = useState("");
@@ -143,7 +163,7 @@ export default function EstoquePage() {
                         {coresUnicas.map(cor => (
                             <SelectItem key={cor} value={cor}>
                                 <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full border border-slate-200" style={{backgroundColor: cor === 'Preta' ? '#000' : cor === 'Vermelha' ? '#ef4444' : cor === 'Branca' ? '#fff' : '#94a3b8'}}></div>
+                                    <div className="w-3 h-3 rounded-full border border-slate-200" style={{backgroundColor: getHexColor(cor as string)}}></div>
                                     {cor}
                                 </div>
                             </SelectItem>
@@ -194,7 +214,7 @@ export default function EstoquePage() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full border-2 border-white shadow-sm flex items-center justify-center" style={{backgroundColor: moto.cor === 'Preta' ? '#000' : moto.cor === 'Vermelha' ? '#ef4444' : moto.cor === 'Branca' ? '#f1f5f9' : '#94a3b8'}}>
+                                                <div className="w-8 h-8 rounded-full border-2 border-white shadow-sm flex items-center justify-center bg-slate-100 dark:bg-slate-800 relative z-0 before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-tr before:from-black/10 before:to-transparent" style={{backgroundColor: getHexColor(moto.cor)}}>
                                                     {/* Dot Visual */}
                                                 </div>
                                                 <div className="flex flex-col text-xs">
@@ -240,7 +260,7 @@ export default function EstoquePage() {
                                                         
                                                         <div className="grid grid-cols-2 gap-4 text-sm mt-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                                                             <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Chassi (VIN)</p><p className="font-mono text-lg font-bold">{moto.sku}</p></div>
-                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Cores</p><div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full border border-slate-200" style={{backgroundColor: moto.cor === 'Preta' ? '#000' : moto.cor === 'Vermelha' ? '#ef4444' : moto.cor === 'Branca' ? '#fff' : '#94a3b8'}}></div> <p>{moto.cor} / {moto.cor_banco}</p></div></div>
+                                                            <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Cores</p><div className="flex items-center gap-2"><div className="w-4 h-4 rounded-full border border-slate-200" style={{backgroundColor: getHexColor(moto.cor)}}></div> <p>{moto.cor} / {moto.cor_banco}</p></div></div>
                                                             <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Local Atual</p><p className="font-medium">{moto.localizacao}</p></div>
                                                             <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Data de Entrada</p><p>{new Date(moto.created_at).toLocaleString()}</p></div>
                                                             <div className="space-y-1"><p className="text-xs font-bold uppercase text-slate-500">Montador</p><p>{moto.montador?.nome || 'N/A'}</p></div>
