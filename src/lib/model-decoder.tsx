@@ -11,6 +11,7 @@ const VDS_MAP: Record<string, string> = {
   JTS050: "JET 50 (S)",
   PHS050: "PHOENIX 50 (S)",
   ATV200: "QUADRICICLO ATV 200",
+  ATF200: "QUADRICICLO ATV 200 EFI",
   SCE350: "SCOOTER PT1",
   PT2100: "SCOOTER PT2",
   PT2800: "SCOOTER PT2X S",
@@ -34,19 +35,22 @@ const VDS_MAP: Record<string, string> = {
   TTF250: "TITANIUM EFI",
   DVF250: "DENVER EFI",
   ARF250: "IRON EFI",
-    'STF200': 'STORM 200 EFI', // Refinado para EFI
-    'WKR125': 'WORKER 125',    // Adicionado Worker
-    'WKR150': 'WORKER 150',
-    'WKF125': 'WORKER 125 EFI',
+  STF200: "STORM 200 EFI", // Refinado para EFI
+  WKR125: "WORKER 125", // Adicionado Worker
+  WKR150: "WORKER 150",
+  WKF125: "WORKER 125 EFI",
   DRF012: "DRIFT 01",
   PTXR20: "PTXR",
   SH3800: "SCOOTER SH3",
   KTR150: "TRICICLO SOUZA",
   SH4800: "SCOOTER SH-4",
   CR150R: "SOUZA CROSS",
+
+  // Linha SBM (Premium/Custom)
   SB1400: "SBM 400",
   SB1250: "SBM 250",
   SBT600: "SBM 600",
+  SBV600: "SBM 600 V-Twin", // Novo
   SF1150: "SBM 150",
 };
 
@@ -96,8 +100,10 @@ function decodificarGenerico(vds: string): string | null {
   else if (prefixo.startsWith("AR")) familia = "IRON";
   else if (prefixo.startsWith("ST")) familia = "STORM";
   else if (prefixo.startsWith("DR")) familia = "DRIFT";
-    else if (prefixo.startsWith("PT")) familia = "SCOOTER PT";
-    else if (prefixo.startsWith("WK")) familia = "WORKER"; // Adicionado suporte genérico para Worker
+  else if (prefixo.startsWith("PT")) familia = "SCOOTER PT";
+  else if (prefixo.startsWith("WK")) familia = "WORKER";
+  else if (prefixo.startsWith("SB")) familia = "SBM";
+  else if (prefixo.startsWith("AT")) familia = "QUADRICICLO ATV";
 
   if (!familia) return null;
 
