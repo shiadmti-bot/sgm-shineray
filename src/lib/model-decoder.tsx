@@ -6,8 +6,7 @@ const VDS_MAP: Record<string, string> = {
   // Novos Modelos 2026
   NJ1125: "JET 125 2026",
   SHF195: "SHI 175 EFI 2026",
-  NJ1150: 'SBM 150 S',
-
+  NJ1150: "SHI 150 S - MOTO NEW JEF",
   // Modelos Existentes
   JTS050: "JET 50 (S)",
   PHS050: "PHOENIX 50 (S)",
