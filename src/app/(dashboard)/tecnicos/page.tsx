@@ -5,7 +5,8 @@ import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { registrarLog } from "@/lib/logger";
 import { 
-  Search, Plus, Edit, Wrench, Shield, Crown, Briefcase, Archive, RotateCcw, Timer, Trophy, User
+  Search, Plus, Edit, Wrench, Shield, Crown, Briefcase, Archive, RotateCcw, Timer, Trophy, User,
+  Medal, Zap, ShieldCheck, Flame
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -30,6 +32,8 @@ type Tecnico = {
   total_retrabalhos: number;
   tempo_medio: number;
   status_atual: 'livre' | 'em_producao' | 'arquivado';
+  score?: number;
+  badges?: string[];
 };
 
 export default function TecnicosPage() {
@@ -101,16 +105,30 @@ export default function TecnicosPage() {
           const media = countValidos > 0 ? Math.round(somaMinutos / countValidos) : 0;
           const trabalhando = minhasMotos.some((m: any) => m.status === 'em_producao');
 
+          // Gamification: Cálculo Dinâmico de Score
+          let score = (total * 10) - (retrabalhos * 25);
+          if (total > 0 && media > 0 && media < 100) score += 15; // Bônus de eficiência
+
+          // Gamification: Badges
+          const badges = [];
+          if (total >= 5 && retrabalhos === 0) badges.push('qualidade');
+          if (total >= 50) badges.push('volume');
+          if (media > 0 && media < 90) badges.push('velocidade');
+          if (trabalhando) badges.push('onfire');
+
           return {
             ...f,
             total_montagens: total,
             total_retrabalhos: retrabalhos,
             tempo_medio: media,
-            status_atual: f.ativo ? (trabalhando ? 'em_producao' : 'livre') : 'arquivado'
+            status_atual: f.ativo ? (trabalhando ? 'em_producao' : 'livre') : 'arquivado',
+            score: Math.max(0, score),
+            badges
           };
         });
 
-        setTecnicos(listaProcessada);
+        const ordenada = listaProcessada.sort((a,b) => (b.score || 0) - (a.score || 0));
+        setTecnicos(ordenada);
     } catch (error) {
         console.error("Erro ao carregar técnicos:", error);
         toast.error("Falha ao carregar dados da equipe.");
@@ -278,84 +296,208 @@ export default function TecnicosPage() {
            </Select>
         </div>
 
-        {/* Grid de Cards */}
-        {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1,2,3].map(i => <Skeleton key={i} className="h-80 w-full rounded-2xl" />)}
-            </div>
-        ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {listaFiltrada.map((tec) => {
-                    const info = getCargoInfo(tec.cargo);
-                    const Icon = info.icon;
-                    
-                    return (
-                        <Card key={tec.id} className={`group relative hover:border-blue-400 transition-all ${!tec.ativo && 'opacity-60 grayscale'}`}>
-                            {tec.status_atual === 'em_producao' && (
-                                <div className="absolute top-4 right-4 z-10">
-                                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 animate-pulse border-0">
-                                        EM PRODUÇÃO
-                                    </Badge>
-                                </div>
-                            )}
-                            
-                            <CardContent className="p-6 flex flex-col items-center text-center">
-                                <Avatar className="w-24 h-24 border-4 border-slate-100 dark:border-slate-800 mb-4 shadow-lg">
-                                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${tec.nome}`} />
-                                    <AvatarFallback><User className="w-8 h-8 text-slate-400"/></AvatarFallback>
+        {/* TABS DE GAMIFICAÇÃO VS GESTÃO */}
+        <Tabs defaultValue="placar" className="w-full">
+            <TabsList className="bg-slate-100 dark:bg-slate-900 w-full justify-start h-auto p-1 mb-6 flex-wrap gap-2">
+                <TabsTrigger value="placar" className="flex items-center gap-2 px-6"><Trophy className="w-4 h-4"/> Placar de Líderes</TabsTrigger>
+                <TabsTrigger value="gestao" className="flex items-center gap-2 px-6"><Briefcase className="w-4 h-4"/> Gestão Administrativa</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="placar" className="space-y-8 mt-0">
+                {/* PÓDIO TOP 3 */}
+                {!loading && listaFiltrada.length >= 3 && (
+                    <div className="bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 rounded-2xl p-8 border border-slate-200 dark:border-slate-800 shadow-inner flex flex-col md:flex-row items-end justify-center gap-4 md:gap-8 min-h-[300px]">
+                        {/* 2º LUGAR */}
+                        <div className="flex flex-col items-center animate-in slide-in-from-bottom duration-700 delay-100 p-4 w-full md:w-1/4">
+                            <div className="relative mb-4">
+                                <Avatar className="w-20 h-20 border-4 border-slate-300 shadow-md">
+                                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${listaFiltrada[1].nome}&backgroundColor=94a3b8`} />
+                                    <AvatarFallback>#2</AvatarFallback>
                                 </Avatar>
-                                
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1">{tec.nome}</h3>
-                                
-                                <div className="flex items-center gap-2 mb-6">
-                                    <Badge variant="outline" className={`px-2 py-1 border-0 ${info.color}`}>
-                                        <Icon className="w-3 h-3 mr-1" /> {info.label}
-                                    </Badge>
-                                    {tec.cargo === 'montador' && (
-                                        <span className="text-xs font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded font-bold">
-                                            {tec.matricula}
-                                        </span>
-                                    )}
-                                </div>
+                                <div className="absolute -bottom-3 -right-3 bg-slate-200 text-slate-700 p-2 rounded-full border-2 border-white shadow-sm font-black w-8 h-8 flex items-center justify-center">2</div>
+                            </div>
+                            <h4 className="font-bold text-lg text-slate-700 dark:text-slate-300 text-center">{listaFiltrada[1].nome}</h4>
+                            <Badge className="mt-2 bg-slate-200 text-slate-800 hover:bg-slate-300">{listaFiltrada[1].score} pts</Badge>
+                            <div className="w-full h-24 bg-gradient-to-t from-slate-200 to-slate-100 dark:from-slate-800 dark:to-slate-800/50 mt-4 rounded-t-lg border-t-4 border-slate-300 flex items-center justify-center">
+                                <Medal className="w-8 h-8 text-slate-400 opacity-50"/>
+                            </div>
+                        </div>
 
-                                <div className="w-full grid grid-cols-3 gap-2 text-center bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800/50 mb-6">
-                                    <div>
-                                        <div className="flex justify-center mb-1"><Trophy className="w-5 h-5 text-green-500" /></div>
-                                        <p className="text-2xl font-black text-slate-900 dark:text-white">{tec.total_montagens}</p>
-                                        <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Total</p>
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-center mb-1"><Timer className="w-5 h-5 text-blue-500" /></div>
-                                        <p className="text-2xl font-black text-slate-900 dark:text-white">{tec.tempo_medio}</p>
-                                        <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Média (min)</p>
-                                    </div>
-                                    <div>
-                                        <div className="flex justify-center mb-1"><RotateCcw className="w-5 h-5 text-amber-500" /></div>
-                                        <p className="text-2xl font-black text-amber-600 dark:text-amber-500">{tec.total_retrabalhos}</p>
-                                        <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Retrabalho</p>
-                                    </div>
-                                </div>
+                        {/* 1º LUGAR */}
+                        <div className="flex flex-col items-center animate-in slide-in-from-bottom duration-700 p-4 w-full md:w-1/3 z-10">
+                            <Crown className="w-10 h-10 text-yellow-500 mb-2 fill-yellow-500 animate-bounce" />
+                            <div className="relative mb-4">
+                                <Avatar className="w-28 h-28 border-4 border-yellow-400 shadow-xl shadow-yellow-500/20">
+                                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${listaFiltrada[0].nome}&backgroundColor=eab308`} />
+                                    <AvatarFallback>#1</AvatarFallback>
+                                </Avatar>
+                                <div className="absolute -bottom-3 -right-3 bg-yellow-400 text-yellow-900 p-2 rounded-full border-2 border-white shadow-sm font-black w-10 h-10 flex items-center justify-center text-lg">1</div>
+                            </div>
+                            <h4 className="font-black text-xl text-yellow-600 dark:text-yellow-500 text-center">{listaFiltrada[0].nome}</h4>
+                            <Badge className="mt-2 text-sm bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-400 hover:bg-yellow-200 px-4 py-1 border border-yellow-300">{listaFiltrada[0].score} pts</Badge>
+                            <div className="w-full h-32 bg-gradient-to-t from-yellow-100 to-yellow-50 dark:from-yellow-900/30 dark:to-yellow-900/10 mt-4 rounded-t-lg border-t-4 border-yellow-400 flex items-center justify-center">
+                                <Trophy className="w-12 h-12 text-yellow-500 opacity-80"/>
+                            </div>
+                        </div>
 
-                                <div className="flex gap-3 w-full">
-                                    <Button variant="outline" className="flex-1 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => handleOpenEdit(tec)}>
-                                        <Edit className="w-4 h-4 mr-2" /> Editar
-                                    </Button>
-                                    {tec.ativo ? (
-                                        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleArquivar(tec.id, tec.nome)}>
-                                            <Archive className="w-5 h-5" />
-                                        </Button>
-                                    ) : (
-                                        <Button variant="ghost" size="icon" className="text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={() => handleRestaurar(tec.id)}>
-                                            <RotateCcw className="w-5 h-5" />
-                                        </Button>
+                        {/* 3º LUGAR */}
+                        <div className="flex flex-col items-center animate-in slide-in-from-bottom duration-700 delay-200 p-4 w-full md:w-1/4">
+                            <div className="relative mb-4">
+                                <Avatar className="w-16 h-16 border-4 border-amber-600 shadow-md">
+                                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${listaFiltrada[2].nome}&backgroundColor=d97706`} />
+                                    <AvatarFallback>#3</AvatarFallback>
+                                </Avatar>
+                                <div className="absolute -bottom-3 -right-3 bg-amber-600 text-white p-2 rounded-full border-2 border-white shadow-sm font-black w-8 h-8 flex items-center justify-center text-sm">3</div>
+                            </div>
+                            <h4 className="font-bold text-md text-slate-700 dark:text-slate-300 text-center">{listaFiltrada[2].nome}</h4>
+                            <Badge className="mt-2 bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-500 border border-amber-200">{listaFiltrada[2].score} pts</Badge>
+                            <div className="w-full h-16 bg-gradient-to-t from-amber-100 to-amber-50 dark:from-amber-900/20 dark:to-amber-900/5 mt-4 rounded-t-lg border-t-4 border-amber-600 flex items-center justify-center">
+                                <Medal className="w-6 h-6 text-amber-600 opacity-40"/>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Grid de Cards Gamificado */}
+                {loading ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {[1,2,3].map(i => <Skeleton key={i} className="h-80 w-full rounded-2xl" />)}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {listaFiltrada.map((tec, index) => {
+                            const info = getCargoInfo(tec.cargo);
+                            const Icon = info.icon;
+                            
+                            return (
+                                <Card key={tec.id} className={`group relative hover:border-indigo-400 transition-all ${!tec.ativo && 'opacity-60 grayscale'}`}>
+                                    {tec.status_atual === 'em_producao' && (
+                                        <div className="absolute top-4 left-4 z-10">
+                                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 animate-pulse border-0">
+                                                EM PRODUÇÃO
+                                            </Badge>
+                                        </div>
                                     )}
-                                </div>
-                            </CardContent>
-                        </Card>
-                    );
-                })}
-            </div>
-        )}
+
+                                    {/* Score display top right */}
+                                    <div className="absolute top-4 right-4 z-10 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-bold px-3 py-1 rounded-full text-sm border border-indigo-100 dark:border-indigo-800">
+                                        {tec.score} pts
+                                    </div>
+                                    
+                                    <CardContent className="p-6 pt-12 flex flex-col items-center text-center">
+                                        <div className="relative">
+                                            <Avatar className={`w-24 h-24 border-4 ${index === 0 ? 'border-yellow-400' : index === 1 ? 'border-slate-300' : index === 2 ? 'border-amber-600' : 'border-slate-100 dark:border-slate-800'} mb-4 shadow-lg`}>
+                                                <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${tec.nome}`} />
+                                                <AvatarFallback><User className="w-8 h-8 text-slate-400"/></AvatarFallback>
+                                            </Avatar>
+                                            {index < 3 && (
+                                                <div className={`absolute -bottom-2 -right-2 w-8 h-8 rounded-full border-2 border-white flex items-center justify-center font-black text-sm text-white ${index === 0 ? 'bg-yellow-500' : index === 1 ? 'bg-slate-400' : 'bg-amber-600'}`}>
+                                                    {index + 1}
+                                                </div>
+                                            )}
+                                        </div>
+                                        
+                                        <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1">{tec.nome}</h3>
+                                        
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <Badge variant="outline" className={`px-2 py-1 border-0 ${info.color}`}>
+                                                <Icon className="w-3 h-3 mr-1" /> {info.label}
+                                            </Badge>
+                                        </div>
+
+                                        {/* Display Badges */}
+                                        <div className="flex flex-wrap items-center justify-center gap-2 mb-6 min-h-[30px]">
+                                            {tec.badges?.map(b => (
+                                                <span key={b} title={b === 'qualidade' ? 'Qualidade Pura (0 Retrabalhos)' : b === 'velocidade' ? 'Rápido & Furioso (< 90m média)' : b === 'volume' ? 'Máquina de Produção (>50 motos)' : 'On Fire (Em produção agora)'}>
+                                                    {b === 'qualidade' && <ShieldCheck className="w-5 h-5 text-indigo-500 drop-shadow-sm" />}
+                                                    {b === 'velocidade' && <Zap className="w-5 h-5 text-yellow-500 drop-shadow-sm" />}
+                                                    {b === 'volume' && <Trophy className="w-5 h-5 text-purple-500 drop-shadow-sm" />}
+                                                    {b === 'onfire' && <Flame className="w-5 h-5 text-orange-500 animate-pulse drop-shadow-sm" />}
+                                                </span>
+                                            ))}
+                                            {(!tec.badges || tec.badges.length === 0) && <span className="text-xs text-slate-400">Iniciante</span>}
+                                        </div>
+
+                                        <div className="w-full grid grid-cols-3 gap-2 text-center bg-slate-50 dark:bg-slate-950/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800/50">
+                                            <div>
+                                                <p className="text-xl font-black text-slate-900 dark:text-white">{tec.total_montagens}</p>
+                                                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-1">Total</p>
+                                            </div>
+                                            <div className="border-x border-slate-200 dark:border-slate-800">
+                                                <p className="text-xl font-black text-slate-900 dark:text-white">{tec.tempo_medio}</p>
+                                                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-1">Min/Moto</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xl font-black text-red-500">{tec.total_retrabalhos}</p>
+                                                <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-1">Erros</p>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
+                    </div>
+                )}
+            </TabsContent>
+
+            <TabsContent value="gestao" className="mt-0">
+                {/* Gestão List */}
+                {loading ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {[1,2,3].map(i => <Skeleton key={i} className="h-60 w-full rounded-2xl" />)}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {listaFiltrada.map((tec) => {
+                            const info = getCargoInfo(tec.cargo);
+                            const Icon = info.icon;
+                            
+                            return (
+                                <Card key={tec.id} className={`group relative hover:border-blue-400 transition-all ${!tec.ativo && 'opacity-60 grayscale'}`}>
+                                    <CardContent className="p-6">
+                                        <div className="flex items-start gap-4 mb-6">
+                                            <Avatar className="w-16 h-16 border-2 border-slate-100 dark:border-slate-800">
+                                                <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${tec.nome}`} />
+                                                <AvatarFallback><User className="w-6 h-6 text-slate-400"/></AvatarFallback>
+                                            </Avatar>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">{tec.nome}</h3>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <Badge variant="outline" className={`px-2 py-0 border-0 ${info.color} text-xs`}>
+                                                        <Icon className="w-3 h-3 mr-1" /> {info.label}
+                                                    </Badge>
+                                                    {tec.cargo === 'montador' && (
+                                                        <span className="text-xs font-mono text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0 rounded font-bold">
+                                                            {tec.matricula}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-slate-400 mt-2">{tec.email}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-3 w-full">
+                                            <Button variant="outline" className="flex-1 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => handleOpenEdit(tec)}>
+                                                <Edit className="w-4 h-4 mr-2" /> Editar Acessos
+                                            </Button>
+                                            {tec.ativo ? (
+                                                <Button variant="ghost" size="icon" title="Arquivar Usuário" className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleArquivar(tec.id, tec.nome)}>
+                                                    <Archive className="w-5 h-5" />
+                                                </Button>
+                                            ) : (
+                                                <Button variant="ghost" size="icon" title="Restaurar Usuário" className="text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={() => handleRestaurar(tec.id)}>
+                                                    <RotateCcw className="w-5 h-5" />
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            );
+                        })}
+                    </div>
+                )}
+            </TabsContent>
+        </Tabs>
 
         {/* MODAL */}
         <Dialog open={modalOpen} onOpenChange={setModalOpen}>

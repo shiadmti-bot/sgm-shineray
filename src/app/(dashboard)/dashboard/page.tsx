@@ -24,7 +24,7 @@ export default function DashboardPage() {
     produzidoHoje: 0
   });
   const [linhaAtiva, setLinhaAtiva] = useState<any[]>([]);
-  const [metaDiaria] = useState(50); // Exemplo de meta fixa ou vinda do banco
+  const [metaDiaria] = useState(35); // Exemplo de meta fixa ou vinda do banco
 
   useEffect(() => {
     fetchDados();

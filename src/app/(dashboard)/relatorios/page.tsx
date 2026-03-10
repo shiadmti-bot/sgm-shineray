@@ -149,7 +149,7 @@ export default function RelatoriosPage() {
       mapa[dataKey].total++;
       if (m.status?.includes('avaria')) mapa[dataKey].avarias++;
       else if (m.rework_count > 0 || m.status === 'retrabalho_montagem') mapa[dataKey].retrabalhos++;
-      else if (m.status === 'aprovado') mapa[dataKey].perfeitas++;
+      else if (['aprovado', 'estoque', 'expedido'].includes(m.status)) mapa[dataKey].perfeitas++;
       else mapa[dataKey].emAndamento++;
     });
     setTimelineData(Object.values(mapa));
@@ -170,8 +170,8 @@ export default function RelatoriosPage() {
 
   function calcularKPIs(motos: any[], histAv: any[], prevMotos: any[], logsSaida: any[]) {
     const total = motos.length;
-    const aprovadasTotal = motos.filter(m => m.status === 'aprovado').length;
-    const perfeitas = motos.filter(m => m.status === 'aprovado' && (!m.rework_count || m.rework_count === 0)).length;
+    const aprovadasTotal = motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status)).length;
+    const perfeitas = motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0)).length;
     const comRetrabalho = motos.filter(m => m.rework_count > 0 || m.status === 'retrabalho_montagem').length;
     const taxaRetrabalho = total > 0 ? ((comRetrabalho / total) * 100).toFixed(1) : "0";
     const fpy = total > 0 ? ((perfeitas / total) * 100).toFixed(1) : "0";
@@ -216,8 +216,8 @@ export default function RelatoriosPage() {
   function processarFunil(motos: any[]) {
     const t = motos.length;
     const montagem = motos.filter(m => m.status !== 'aguardando_montagem').length;
-    const inspecao = motos.filter(m => ['em_analise', 'aprovado'].includes(m.status)).length;
-    const aprovadas = motos.filter(m => m.status === 'aprovado').length;
+    const inspecao = motos.filter(m => m.fim_montagem).length;
+    const aprovadas = motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status)).length;
     setFunnelData([
       { name: "Entrada", value: t, fill: COLORS.queue, pct: "100%" },
       { name: "Montagem", value: montagem, fill: COLORS.prod, pct: t > 0 ? `${Math.round((montagem/t)*100)}%` : "0%" },
@@ -335,7 +335,7 @@ export default function RelatoriosPage() {
       const mod = m.modelo || 'Desconhecido';
       if (!mapa[mod]) mapa[mod] = { name: mod, total: 0, aprovadas: 0, avarias: 0, retrabalhos: 0 };
       mapa[mod].total++;
-      if (m.status === 'aprovado') mapa[mod].aprovadas++;
+      if (['aprovado', 'estoque', 'expedido'].includes(m.status)) mapa[mod].aprovadas++;
       if (m.status?.startsWith('avaria_')) mapa[mod].avarias++;
       if (m.rework_count > 0) mapa[mod].retrabalhos++;
     });
@@ -375,7 +375,7 @@ export default function RelatoriosPage() {
       if (totalMod > 3 && (count / totalMod) > 0.3) al.push({ tipo: 'crit', msg: `Modelo ${mod} com ${Math.round((count/totalMod)*100)}% de avarias — investigar` });
     });
 
-    const fpy = motos.length > 0 ? (motos.filter(m => m.status === 'aprovado' && (!m.rework_count || m.rework_count === 0)).length / motos.length) * 100 : 100;
+    const fpy = motos.length > 0 ? (motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0)).length / motos.length) * 100 : 100;
     if (fpy >= 95) al.push({ tipo: 'ok', msg: `FPY em ${fpy.toFixed(1)}% — excelente qualidade!` });
 
     setAlertas(al);
