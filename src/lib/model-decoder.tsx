@@ -52,6 +52,9 @@ const VDS_MAP: Record<string, string> = {
   SBT600: "SBM 600",
   SBV600: "SBM 600 V-Twin", // Novo
   SF1150: "SBM 150",
+
+  // Lançamento Scooter (Abril/2026)
+  ULF150: "Urban Lite 150",
 };
 
 export function identificarModelo(codigo: string): string {
