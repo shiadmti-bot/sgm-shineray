@@ -148,7 +148,7 @@ export default function RelatoriosPage() {
       if (!mapa[dataKey]) mapa[dataKey] = { name: dataKey, perfeitas: 0, retrabalhos: 0, avarias: 0, emAndamento: 0, total: 0 };
       mapa[dataKey].total++;
       if (m.status?.includes('avaria')) mapa[dataKey].avarias++;
-      else if (m.rework_count > 0 || m.status === 'retrabalho_montagem') mapa[dataKey].retrabalhos++;
+      else if (m.rework_count > 0 || m.status === 'retrabalho_montagem' || m.tecnico_reparo) mapa[dataKey].retrabalhos++;
       else if (['aprovado', 'estoque', 'expedido'].includes(m.status)) mapa[dataKey].perfeitas++;
       else mapa[dataKey].emAndamento++;
     });
@@ -161,7 +161,7 @@ export default function RelatoriosPage() {
       const key = format(new Date(m.created_at), 'dd/MM');
       if (!mapa[key]) mapa[key] = { total: 0, perfeitas: 0 };
       mapa[key].total++;
-      if (m.status === 'aprovado' && (!m.rework_count || m.rework_count === 0)) mapa[key].perfeitas++;
+      if (['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0) && !m.tecnico_reparo) mapa[key].perfeitas++;
     });
     setFypTimeline(Object.entries(mapa).map(([name, v]) => ({
       name, fpy: v.total > 0 ? Math.round((v.perfeitas / v.total) * 100) : 0, meta: 90
@@ -171,8 +171,8 @@ export default function RelatoriosPage() {
   function calcularKPIs(motos: any[], histAv: any[], prevMotos: any[], logsSaida: any[]) {
     const total = motos.length;
     const aprovadasTotal = motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status)).length;
-    const perfeitas = motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0)).length;
-    const comRetrabalho = motos.filter(m => m.rework_count > 0 || m.status === 'retrabalho_montagem').length;
+    const perfeitas = motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0) && !m.tecnico_reparo).length;
+    const comRetrabalho = motos.filter(m => m.rework_count > 0 || m.status === 'retrabalho_montagem' || m.tecnico_reparo).length;
     const taxaRetrabalho = total > 0 ? ((comRetrabalho / total) * 100).toFixed(1) : "0";
     const fpy = total > 0 ? ((perfeitas / total) * 100).toFixed(1) : "0";
 
@@ -375,7 +375,7 @@ export default function RelatoriosPage() {
       if (totalMod > 3 && (count / totalMod) > 0.3) al.push({ tipo: 'crit', msg: `Modelo ${mod} com ${Math.round((count/totalMod)*100)}% de avarias — investigar` });
     });
 
-    const fpy = motos.length > 0 ? (motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0)).length / motos.length) * 100 : 100;
+    const fpy = motos.length > 0 ? (motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0) && !m.tecnico_reparo).length / motos.length) * 100 : 100;
     if (fpy >= 95) al.push({ tipo: 'ok', msg: `FPY em ${fpy.toFixed(1)}% — excelente qualidade!` });
 
     setAlertas(al);

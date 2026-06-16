@@ -7,6 +7,11 @@ const VDS_MAP: Record<string, string> = {
   NJ1125: "JET 125 2026",
   SHF195: "SHI 175 EFI 2026",
   NJ1150: "SHI 150 S - MOTO NEW JEF",
+  HJ1125: "JET 125 2026",
+  NS1175: "SHI 175 S - MOTO NEW SHI 175 S",
+  SN1175: "SHI 175 S - MOTO NEW SHI 175 S",
+  CS2170: "SHI 170 - MOTO SHI 170 CS",
+  SW1400: "SHI 400 SCRAMBE - MOTO SHI 400 SC",
   // Modelos Existentes
   JTS050: "JET 50 (S)",
   PHS050: "PHOENIX 50 (S)",
@@ -56,6 +61,8 @@ const VDS_MAP: Record<string, string> = {
   // Lançamento Scooter (Abril/2026)
   ULF150: "Urban Lite 150",
 };
+
+export const MODELOS_CADASTRADOS = Array.from(new Set(Object.values(VDS_MAP))).sort();
 
 export function identificarModelo(codigo: string): string {
   if (!codigo || codigo.length < 9) return "Modelo Desconhecido";

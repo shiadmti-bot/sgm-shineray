@@ -3,15 +3,23 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
-import { Printer, Tag } from "lucide-react";
+import { Printer, Tag, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { registrarLog } from "@/lib/logger";
 
 export default function EtiquetagemPage() {
   const [motos, setMotos] = useState<any[]>([]);
+
+  // Estados de Confirmação de Impressão QoL
+  const [motoConfirmando, setMotoConfirmando] = useState<any>(null);
+  const [digitosConfirmacao, setDigitosConfirmacao] = useState("");
+  const [declaracaoLida, setDeclaracaoLida] = useState(false);
+  const [enviandoEstoque, setEnviandoEstoque] = useState(false);
 
   useEffect(() => {
     fetchMotos();
@@ -177,14 +185,15 @@ export default function EtiquetagemPage() {
         janela.document.close();
 
         setTimeout(() => {
-             if(confirm(`Etiqueta do chassi ${moto.sku} impressa corretamente?`)) {
-                 moverParaEstoque(moto);
-             }
+             setMotoConfirmando(moto);
+             setDigitosConfirmacao("");
+             setDeclaracaoLida(false);
         }, 1000);
     }
   };
 
   const moverParaEstoque = async (moto: any) => {
+    setEnviandoEstoque(true);
     const { error } = await supabase.from('motos').update({
         status: 'estoque',
         localizacao: 'Pátio de Estoque',
@@ -194,8 +203,12 @@ export default function EtiquetagemPage() {
     if (!error) {
         toast.success("Enviado para Estoque!");
         await registrarLog('IMPRESSAO_ETIQUETA', moto.sku);
+        setMotoConfirmando(null);
         fetchMotos();
+    } else {
+        toast.error("Erro ao enviar para o estoque.");
     }
+    setEnviandoEstoque(false);
   };
 
   return (
@@ -236,6 +249,73 @@ export default function EtiquetagemPage() {
                 ))
             )}
         </div>
+
+        {/* MODAL DE CONFIRMAÇÃO DE IMPRESSÃO */}
+        <Dialog open={!!motoConfirmando} onOpenChange={(open) => !open && setMotoConfirmando(null)}>
+            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="text-blue-600 flex items-center gap-2 text-xl font-black">
+                         <CheckCircle2 className="w-6 h-6"/> Confirmação de Etiqueta
+                    </DialogTitle>
+                    <DialogDescription>
+                         Evite enviar motos ao estoque sem a etiqueta física. Realize a verificação abaixo.
+                    </DialogDescription>
+                </DialogHeader>
+
+                {motoConfirmando && (
+                    <div className="space-y-5 py-4">
+                        {/* Info da Moto */}
+                        <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <h4 className="font-black text-lg text-slate-800 dark:text-white mb-1">{motoConfirmando.modelo}</h4>
+                            <p className="font-mono text-sm tracking-wider text-slate-500">Chassi: {motoConfirmando.sku}</p>
+                        </div>
+
+                        {/* Declaração Visual */}
+                        <label className="flex items-start gap-3 p-3 rounded-lg border border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-950/20 cursor-pointer select-none">
+                            <input 
+                                 type="checkbox"
+                                 checked={declaracaoLida}
+                                 onChange={(e) => setDeclaracaoLida(e.target.checked)}
+                                 className="mt-1 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                            />
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                 Confirmo que a etiqueta térmica física foi impressa e fixada à caixa da moto.
+                            </span>
+                        </label>
+
+                        {/* Validação de Chassi */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500"/> Digite os 4 últimos dígitos do chassi ({motoConfirmando.sku.slice(-4)})
+                            </label>
+                            <Input 
+                                 placeholder="Ex: 0462"
+                                 value={digitosConfirmacao}
+                                 onChange={e => setDigitosConfirmacao(e.target.value)}
+                                 maxLength={4}
+                                 className="font-mono text-center text-lg tracking-widest h-12"
+                            />
+                        </div>
+                    </div>
+                )}
+
+                <DialogFooter className="gap-2 sm:gap-0">
+                    <Button variant="ghost" onClick={() => setMotoConfirmando(null)}>Cancelar</Button>
+                    <Button 
+                         onClick={() => moverParaEstoque(motoConfirmando)}
+                         disabled={!declaracaoLida || digitosConfirmacao !== motoConfirmando?.sku.slice(-4) || enviandoEstoque}
+                         className={`h-11 font-bold ${
+                              declaracaoLida && digitosConfirmacao === motoConfirmando?.sku.slice(-4)
+                                   ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-600/20' 
+                                   : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'
+                         }`}
+                    >
+                         {enviandoEstoque ? "Enviando..." : "Confirmar e Enviar ao Estoque"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
       </div>
     </RoleGuard>
   );

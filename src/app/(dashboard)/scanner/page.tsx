@@ -12,7 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { identificarModelo } from "@/lib/model-decoder"; // Importando a nova inteligência
+import { identificarModelo, MODELOS_CADASTRADOS } from "@/lib/model-decoder"; // Importando a nova inteligência
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 // --- HELPER: Extração de Ano e Fábrica (Padrão VIN) ---
 // O identificarModelo cuida do Nome, este cuida dos metadados
@@ -39,6 +41,14 @@ export default function ScannerPage() {
   const [ultimoRegistro, setUltimoRegistro] = useState<any>(null);
   const [cameraAtiva, setCameraAtiva] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Estados para QoL de Modelo Desconhecido
+  const [modalModeloDesconhecidoOpen, setModalModeloDesconhecidoOpen] = useState(false);
+  const [chassiPendente, setChassiPendente] = useState("");
+  const [metadadosPendentes, setMetadadosPendentes] = useState<any>(null);
+  const [modeloSelecionado, setModeloSelecionado] = useState("");
+  const [customModelo, setCustomModelo] = useState("");
+  const [usarCustomModelo, setUsarCustomModelo] = useState(false);
 
   // Configuração da Câmera (Zxing)
   const { ref } = useZxing({
@@ -96,12 +106,38 @@ export default function ScannerPage() {
         return;
       }
 
+      // Se for desconhecido, abre o modal de resolução
+      if (modeloIdentificado === "Modelo Desconhecido") {
+        setChassiPendente(chassi);
+        setMetadadosPendentes(metadados);
+        setModeloSelecionado(MODELOS_CADASTRADOS[0] || "");
+        setUsarCustomModelo(false);
+        setCustomModelo("");
+        setModalModeloDesconhecidoOpen(true);
+        setLoading(false);
+        setCodigo("");
+        return;
+      }
+
+      await registrarMotoNoBanco(chassi, modeloIdentificado, metadados);
+
+    } catch (err: any) {
+      console.error("Erro scanner:", err);
+      toast.error("Erro ao registrar entrada."); 
+      setLoading(false);
+      setCodigo("");
+    }
+  };
+
+  const registrarMotoNoBanco = async (chassi: string, modelo: string, metadados: any) => {
+    setLoading(true);
+    try {
       // 3. Registro na Fila
       const { data: novaMoto, error: erroInsert } = await supabase
         .from('motos')
         .insert({
           sku: chassi,
-          modelo: modeloIdentificado,
+          modelo: modelo,
           ano: metadados.ano,
           localizacao: 'Recebimento / CD', 
           status: 'aguardando_montagem',
@@ -118,12 +154,12 @@ export default function ScannerPage() {
         ...novaMoto,
         fabrica: metadados.fabrica,
         // Lógica simples de linha baseada no modelo para preencher o visual
-        linha_destino: modeloIdentificado.includes('SCOOTER') ? 'Linha Scooter' : 
-                       modeloIdentificado.includes('ATV') ? 'Linha Off-Road' : 'Linha Geral',
+        linha_destino: modelo.includes('SCOOTER') ? 'Linha Scooter' : 
+                       modelo.includes('ATV') ? 'Linha Off-Road' : 'Linha Geral',
       });
       
       toast.success("Entrada Registrada!", {
-        description: `${modeloIdentificado} enviada para montagem.`
+        description: `${modelo} enviada para montagem.`
       });
 
       // Efeito Sonoro (Opcional)
@@ -131,7 +167,7 @@ export default function ScannerPage() {
       audio.play().catch(() => {});
 
     } catch (err: any) {
-      console.error("Erro scanner:", err);
+      console.error("Erro insert:", err);
       toast.error("Erro ao registrar entrada."); 
     } finally {
       setLoading(false);
@@ -297,6 +333,91 @@ export default function ScannerPage() {
              )}
           </div>
         </div>
+
+        {/* MODAL RESOLUÇÃO MODELO DESCONHECIDO */}
+        <Dialog open={modalModeloDesconhecidoOpen} onOpenChange={setModalModeloDesconhecidoOpen}>
+            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+                <DialogHeader>
+                    <DialogTitle className="text-amber-600 flex items-center gap-2">
+                         <Box className="w-5 h-5"/> Chassi Não Reconhecido
+                    </DialogTitle>
+                    <DialogDescription>
+                         O chassi escaneado não foi associado a nenhum modelo automaticamente. Selecione ou digite o modelo correspondente.
+                    </DialogDescription>
+                </DialogHeader>
+                
+                <div className="space-y-4 py-4">
+                    <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                        <p className="text-xs text-slate-400 uppercase font-bold">Chassi Bipado</p>
+                        <p className="font-mono text-lg font-bold tracking-widest text-slate-800 dark:text-slate-100">{chassiPendente}</p>
+                    </div>
+
+                    <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+                         <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                              <input 
+                                   type="radio" 
+                                   checked={!usarCustomModelo} 
+                                   onChange={() => setUsarCustomModelo(false)} 
+                                   className="text-blue-600 focus:ring-blue-500"
+                              />
+                              Selecionar da lista
+                         </label>
+                         <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                              <input 
+                                   type="radio" 
+                                   checked={usarCustomModelo} 
+                                   onChange={() => setUsarCustomModelo(true)} 
+                                   className="text-blue-600 focus:ring-blue-500"
+                              />
+                              Digitar manualmente
+                         </label>
+                    </div>
+
+                    {!usarCustomModelo ? (
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-400 uppercase">Modelo do Catálogo</label>
+                            <Select onValueChange={setModeloSelecionado} value={modeloSelecionado}>
+                                <SelectTrigger className="w-full">
+                                     <SelectValue placeholder="Selecione um modelo..."/>
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[300px]">
+                                     {MODELOS_CADASTRADOS.map(m => (
+                                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                                     ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-400 uppercase">Modelo Personalizado</label>
+                            <Input 
+                                 placeholder="Ex: SHI 175 EFI 2026..." 
+                                 value={customModelo} 
+                                 onChange={e => setCustomModelo(e.target.value)} 
+                                 className="uppercase"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => setModalModeloDesconhecidoOpen(false)}>Cancelar</Button>
+                    <Button 
+                         onClick={async () => {
+                              const mod = usarCustomModelo ? customModelo.toUpperCase().trim() : modeloSelecionado;
+                              if (!mod) return toast.warning("Defina o modelo antes de salvar");
+                              
+                              setModalModeloDesconhecidoOpen(false);
+                              await registrarMotoNoBanco(chassiPendente, mod, metadadosPendentes);
+                         }} 
+                         className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                         Confirmar Entrada
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
       </div>
     </RoleGuard>
   );
