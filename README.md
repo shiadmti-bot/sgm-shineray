@@ -1,27 +1,49 @@
 # SGM - Sistema de Gestão de Montagem (Shineray By Sabel)
 
-![Status](https://img.shields.io/badge/Status-Produção-green)
-![Version](https://img.shields.io/badge/Versão-2.0.0-blue)
+![Versão](https://img.shields.io/badge/Versão-2.0.0-red)
 ![Stack](https://img.shields.io/badge/Stack-Next.js_16_|_Supabase-black)
 
-Sistema web completo para controle de linha de montagem de motocicletas, abrangendo desde a entrada do chassi até a expedição, com controle rigoroso de qualidade, gestão de avarias e etiquetagem térmica.
+Sistema web para a linha de montagem de motocicletas: entrada do chassi, montagem, qualidade, avarias,
+etiquetagem, estoque e expedição — com perfis de acesso, auditoria e funcionamento em tablets.
 
-## 🚀 Funcionalidades Principais
+## 🆕 Novidades da V2
 
-* **Torre de Controle (Dashboard):** Fluxo completo em tempo real (fila de entrada, montagem, pausas, inspeção, avarias, etiquetagem e estoque), meta diária configurável sobre montagens finalizadas, tempo ao vivo de cada box, alertas automáticos (montagem atrasada, pausa longa, fila de inspeção, avarias) e feed de atividade.
-* **Linha de Montagem Digital:** Cronometragem automática, checklist configurável, solicitação de pausa com motivo (cancelável), proteção contra dois montadores assumirem a mesma caixa.
-* **Controle de Qualidade (QA):** Fluxo de aprovação, retrabalho (volta pra linha) ou segregação (vai para oficina), com tempo de espera da fila.
-* **Gestão de Avarias:** Histórico imutável de defeitos e reparos ("Prontuário da Moto") e painel de reparos concluídos.
-* **Etiquetagem Personalizável:** Editor visual de modelos de etiqueta (tamanho, blocos, fontes, código de barras/QR Code, campos, logo, calibração da impressora), impressão em lote e conferência por leitura do código de barras. Compatível com impressoras térmicas como a BY-480BT.
-* **Estoque & Expedição:** Inventário com filtros, exportação CSV, reimpressão de etiqueta e baixa de saída.
-* **Configurações do Sistema:** Meta diária, limites de alerta, checklist, catálogos de cores e novos modelos (código VDS) sem precisar atualizar o sistema.
-* **Auditoria:** Rastreabilidade completa (logins, falhas de login, entradas, pausas, QA, etiquetas, configurações, equipe) com filtros e exportação.
+* **Perfis de acesso (RBAC):** perfis configuráveis na tela *Perfis de acesso*, com permissões por tela e por ação.
+  As mesmas regras são conferidas pelo banco de dados (RLS), não só pelo aplicativo. Detalhes em [`docs/rbac.md`](docs/rbac.md).
+* **Login pelo Supabase Auth:** senhas guardadas só como hash; montadores continuam com matrícula + PIN;
+  senha provisória com troca obrigatória; sessão de até 12 h por dispositivo; conta arquivada perde o acesso na hora.
+* **Prontuário do chassi:** linha do tempo completa de cada moto (entrada, montagem, pausas, qualidade, avarias,
+  fotos, etiquetas, inventários e expedição), com impressão.
+* **Busca rápida (Ctrl+K):** digite ou bipe o chassi (ou só o final dele) em qualquer tela.
+* **Inventário do pátio:** contagem por leitura em vários tablets ao mesmo tempo, pendências ao vivo, faltas e
+  sobras no fechamento e exportação para Excel.
+* **Fotos nas avarias e na qualidade:** câmera do tablet/celular, compressão automática e armazenamento privado
+  (Supabase Storage, links temporários).
+* **Central de notificações:** pedidos de pausa, retrabalhos, avarias, reparos e divergências de inventário no sino
+  (tempo real quando disponível).
+* **Visual renovado:** identidade Shineray (vermelho, preto e branco), menu agrupado por área e recolhível,
+  tema escuro revisado, componentes padronizados e telas pensadas para tablet.
+* **Equipe:** cadastro e redefinição de acesso pelo servidor, último acesso de cada pessoa e desempenho dos últimos 90 dias.
+* **Montagem:** horários pelo relógio do servidor, tempo de pausa registrado (início e fim) e cores salvas na hora.
+
+Para migrar uma instalação da V1, siga [`docs/implantacao-v2.md`](docs/implantacao-v2.md).
+
+## 🚀 Módulos
+
+* **Painel:** fluxo em tempo real, meta diária, montagens ao vivo, pausas, alertas e atividade recente.
+* **Entrada:** leitura de caixas (leitor USB/Bluetooth ou câmera) com identificação automática do modelo.
+* **Montagem:** fila, retrabalhos prioritários, cronômetro, checklist configurável, pedido de pausa.
+* **Qualidade (QA):** aprovar, devolver para retrabalho ou segregar para avaria, com fotos.
+* **Avarias:** pátio com fotos, registro de reparo e histórico dos últimos 30 dias.
+* **Etiquetagem:** editor visual de etiquetas, impressão em lote e conferência por leitura.
+* **Estoque:** filtros, reimpressão, correções, reversão e expedição.
+* **Inventário, Prontuário, Relatórios, Equipe, Perfis de acesso, Auditoria e Configurações.**
 
 ## 🛠️ Stack Tecnológica
 
 * **Frontend:** [Next.js 16](https://nextjs.org/) (App Router), React 19, TypeScript.
 * **Estilização:** [Tailwind CSS](https://tailwindcss.com/) + [Shadcn/ui](https://ui.shadcn.com/).
-* **Backend & Database:** [Supabase](https://supabase.com/) (PostgreSQL, Auth, Realtime).
+* **Backend & Database:** [Supabase](https://supabase.com/) (PostgreSQL com RLS, Auth, Realtime, Storage).
 * **Bibliotecas Chave:**
     * `recharts`: Gráficos e BI.
     * `jsbarcode`: Códigos de barras (Code128/Code39) gerados localmente, sem CDN.
@@ -42,18 +64,18 @@ Sistema web completo para controle de linha de montagem de motocicletas, abrange
     npm install
     ```
 
-3.  **Configure as Variáveis de Ambiente:**
+3.  **Configure as Variáveis de Ambiente** (modelo em [`.env.example`](.env.example)):
     Crie um arquivo `.env.local` na raiz:
     ```env
     NEXT_PUBLIC_SUPABASE_URL=sua_url_supabase
     NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anonima
+    # Somente no servidor (nunca com prefixo NEXT_PUBLIC_): usada pela tela Equipe
+    SUPABASE_SERVICE_ROLE_KEY=sua_chave_service_role
     ```
 
-4.  **Crie a tabela de configurações compartilhadas (uma vez):**
-    No Supabase, abra o **SQL Editor** e execute o arquivo
-    [`supabase/migrations/20260928120000_configuracoes_sistema.sql`](supabase/migrations/20260928120000_configuracoes_sistema.sql).
-    Ela guarda o layout das etiquetas, a meta diária, o checklist e os catálogos para **todas as estações**.
-    Sem ela o sistema continua funcionando, mas essas configurações ficam salvas só no navegador de cada dispositivo (a tela de Configurações avisa quando isso acontece).
+4.  **Banco de dados:** aplique as migrações de `supabase/migrations/` na ordem descrita em
+    [`docs/implantacao-v2.md`](docs/implantacao-v2.md) (fase 1, script de usuários, fase 4 e, por fim, fase 5).
+    Para um ambiente de teste do zero há uma estrutura de exemplo em [`docs/teste/esquema-base-v1.sql`](docs/teste/esquema-base-v1.sql).
 
 5.  **Rode o projeto:**
     ```bash
@@ -62,7 +84,7 @@ Sistema web completo para controle de linha de montagem de motocicletas, abrange
 
 ## 🖨️ Etiquetas e Impressora (BY-480BT)
 
-Em **Etiquetagem → Layout das etiquetas** (gestor/master) é possível:
+Em **Etiquetagem → Layout das etiquetas** (permissão "Editar layout de etiquetas") é possível:
 
 * Criar, duplicar, importar/exportar (JSON) e excluir modelos; definir o **modelo padrão**.
 * Definir tamanho do papel (predefinições 100×150, 100×100, 100×50, 70×50, 60×40, 50×30 mm ou personalizado), margem, bordas, fonte e **cópias por moto**.
@@ -82,20 +104,22 @@ No driver da impressora (Windows), cadastre um tamanho de papel para cada modelo
 
 ## 🔐 Perfis de Acesso (RBAC)
 
-* **Master:** Acesso total. Só um Master pode criar/alterar contas Master.
-* **Gestor:** Visão gerencial, relatórios, estoque, equipe, auditoria e configurações.
-* **Supervisor:** Controle de qualidade, aprovação de pausas, avarias e estoque.
-* **Montador:** Linha de montagem, scanner e etiquetagem.
+| Perfil padrão | Acesso | Resumo |
+|---------------|--------|--------|
+| **Master** | Senha | Acesso total, inclusive perfis de acesso |
+| **Gestor** | Senha | Painel, estoque, relatórios, equipe, auditoria e configurações |
+| **Supervisor** | Senha | Qualidade, pausas, avarias, etiquetagem, estoque e inventário |
+| **Montador** | Matrícula + PIN | Montagem, entrada e etiquetagem |
 
-Sessões expiram em 12 horas; colaboradores arquivados perdem o acesso em até 5 minutos.
-
-## 🧪 Ferramenta de desenvolvimento (`/seed`)
-
-A página `/seed` **apaga o banco** e recria usuários de teste. Ela só existe quando a variável de servidor `SGM_HABILITAR_SEED=true` está definida — **nunca** a habilite em produção.
+Perfis novos podem ser criados na tela **Perfis de acesso**. Lista completa de permissões e regras em [`docs/rbac.md`](docs/rbac.md).
 
 ## 🛡️ Segurança
 
-Veja [`docs/revisao-2026-09.md`](docs/revisao-2026-09.md) para o relatório da revisão geral, o que foi corrigido e as recomendações que dependem de mudanças no banco (Supabase Auth, senhas com hash e políticas RLS por cargo).
+* Login pelo Supabase Auth (senhas somente em hash) e regras de acesso no banco (RLS) por permissão.
+* Cadastro de pessoas e senhas apenas pelo servidor (`/api/admin/*`, com a chave service_role).
+* Auditoria com autor e horário definidos pelo servidor; registros não podem ser alterados nem apagados.
+* Fotos em bucket privado com links temporários; respostas do Supabase nunca vão para o cache do PWA.
+* Relatório da revisão anterior: [`docs/revisao-2026-09.md`](docs/revisao-2026-09.md).
 
 ## 📝 Licença
 

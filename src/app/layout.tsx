@@ -2,14 +2,17 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { Toaster } from "sonner";
+import { Toaster } from "@/components/ui/sonner";
 import type { Viewport } from 'next';
 
 export const viewport: Viewport = {
-  themeColor: '#2563eb', // Azul Shineray para a barra do navegador mobile
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#dc2626' },
+    { media: '(prefers-color-scheme: dark)', color: '#0e0e10' },
+  ],
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1, // Impede zoom acidental em inputs no mobile (sensação de app nativo)
+  maximumScale: 1, // Impede zoom acidental em inputs no tablet (sensação de app nativo)
   userScalable: false,
 };
 
@@ -24,8 +27,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SGM - Shineray By Sabel",
+  title: { default: "SGM V2 · Shineray by Sabel", template: "%s · SGM" },
   description: "Sistema de Gestão de Montagem",
+  applicationName: "SGM",
 };
 
 export default function RootLayout({
@@ -46,7 +50,7 @@ export default function RootLayout({
         >
           {children}
           
-          <Toaster />
+          <Toaster richColors closeButton position="top-right" />
         </ThemeProvider>
       </body>
     </html>

@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { RoleGuard } from "@/components/RoleGuard";
+import { PageHeader } from "@/components/sgm/PageHeader";
 import {
   Printer, Tag, CheckCircle2, AlertTriangle, ScanBarcode, Eye, Loader2, Clock, LayoutTemplate, Search, Circle, RefreshCw,
 } from "lucide-react";
@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { registrarLog } from "@/lib/logger";
-import { CARGOS_ADMIN, temCargo, useUsuarioLogado } from "@/lib/auth";
+import { usePode } from "@/lib/auth";
 import { rotuloStatus } from "@/lib/constantes";
 import { formatarDuracaoMin, minutosDesde } from "@/lib/datas";
 import { tocarSom } from "@/lib/sons";
@@ -69,27 +69,26 @@ function lerPreferencia(chave: string, padrao: string): string {
 function ChassiDestacado({ sku, className }: { sku: string; className?: string }) {
   return (
     <span className={cn("font-mono tracking-wider", className)}>
-      {sku.slice(0, -4)}<strong className="text-blue-700 dark:text-blue-400 bg-blue-100 dark:bg-blue-950 rounded px-0.5">{sku.slice(-4)}</strong>
+      {sku.slice(0, -4)}<strong className="text-info bg-info/10 rounded px-0.5">{sku.slice(-4)}</strong>
     </span>
   );
 }
 
 export default function EtiquetagemPage() {
   return (
-    <RoleGuard allowedRoles={['supervisor', 'gestor', 'master', 'montador']}>
-      <Suspense fallback={<Skeleton className="h-96 w-full rounded-2xl" />}>
-        <EtiquetagemConteudo />
-      </Suspense>
-    </RoleGuard>
+    <Suspense fallback={<Skeleton className="h-96 w-full rounded-2xl" />}>
+      <EtiquetagemConteudo />
+    </Suspense>
   );
 }
 
 function EtiquetagemConteudo() {
   const router = useRouter();
   const params = useSearchParams();
-  const usuario = useUsuarioLogado();
-  const podeEditarLayout = temCargo(usuario, CARGOS_ADMIN);
-  const aba = params.get("aba") === "layout" && podeEditarLayout ? "layout" : "fila";
+  const podeEditarLayout = usePode("etiquetas.layout");
+  const podeImprimir = usePode("etiquetas.imprimir");
+  // Quem só edita o layout (sem imprimir) abre direto no editor
+  const aba = podeEditarLayout && (params.get("aba") === "layout" || !podeImprimir) ? "layout" : "fila";
 
   const etiquetas = useConfigEtiquetas();
 
@@ -328,23 +327,16 @@ function EtiquetagemConteudo() {
 
   return (
       <div className="space-y-6 animate-in fade-in pb-20">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div className="flex flex-col">
-                <h1 className="text-3xl font-black text-blue-600 flex items-center gap-3">
-                   <Tag className="w-8 h-8" /> Central de Etiquetagem
-                </h1>
-                <p className="text-slate-500">
-                  {modeloAtual ? <>Modelo em uso: <strong>{modeloAtual.nome}</strong> ({modeloAtual.largura} × {modeloAtual.altura} mm)</> : "Carregando modelos de etiqueta..."}
-                </p>
-            </div>
-            <Badge variant="outline" className="w-fit text-blue-700 border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900 px-3 py-1">
-              {motos.length} aguardando etiqueta
-            </Badge>
-        </div>
+        <PageHeader
+          icone={Tag}
+          titulo="Etiquetagem"
+          descricao={modeloAtual ? <>Modelo em uso: <strong className="text-foreground">{modeloAtual.nome}</strong> ({modeloAtual.largura} × {modeloAtual.altura} mm)</> : "Carregando modelos de etiqueta..."}
+          acoes={<Badge variant="outline" className="h-8 px-3 text-sm">{motos.length} aguardando etiqueta</Badge>}
+        />
 
         <Tabs value={aba} onValueChange={trocarAba} className="w-full">
-          {podeEditarLayout && (
-            <TabsList className="bg-slate-100 dark:bg-slate-900 h-auto p-1 w-full sm:w-fit">
+          {podeEditarLayout && podeImprimir && (
+            <TabsList className="bg-muted h-auto p-1 w-full sm:w-fit">
               <TabsTrigger value="fila" className="px-4 py-2"><Printer className="w-4 h-4" /> Fila de impressão</TabsTrigger>
               <TabsTrigger value="layout" className="px-4 py-2"><LayoutTemplate className="w-4 h-4" /> Layout das etiquetas</TabsTrigger>
             </TabsList>
@@ -352,10 +344,10 @@ function EtiquetagemConteudo() {
 
           <TabsContent value="fila" className="space-y-4 mt-2">
             {/* Barra de ações */}
-            <Card className="py-0 gap-0 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm">
+            <Card className="py-0 gap-0 bg-card border-border shadow-sm">
               <CardContent className="p-4 flex flex-col xl:flex-row gap-3 xl:items-center">
                 <form onSubmit={processarBusca} className="relative flex-1">
-                  <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <ScanBarcode className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <Input
                     ref={buscaRef}
                     value={busca}
@@ -370,7 +362,7 @@ function EtiquetagemConteudo() {
                     <select
                       value={modeloAtual?.id}
                       onChange={(e) => escolherModelo(e.target.value)}
-                      className="h-11 rounded-md border border-input bg-white dark:bg-slate-950 px-3 text-sm max-w-[260px]"
+                      className="h-11 rounded-md border border-input bg-card px-3 text-sm max-w-[260px]"
                       aria-label="Modelo de etiqueta para impressão"
                     >
                       {config.modelos.map((m) => (
@@ -393,7 +385,7 @@ function EtiquetagemConteudo() {
                     <Checkbox checked={todasSelecionadas} onCheckedChange={alternarTodas} />
                     Selecionar todas ({motosFiltradas.length})
                   </label>
-                  <Button onClick={imprimirSelecionadas} disabled={selecionados.size === 0 || imprimindo || !modeloAtual} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
+                  <Button onClick={imprimirSelecionadas} disabled={selecionados.size === 0 || imprimindo || !modeloAtual} className="bg-primary hover:bg-primary/90 text-white font-bold">
                     {imprimindo ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Printer className="w-4 h-4 mr-2" />}
                     Imprimir selecionadas ({selecionados.size})
                   </Button>
@@ -405,7 +397,7 @@ function EtiquetagemConteudo() {
                 {carregando ? (
                     [1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-64 w-full rounded-xl" />)
                 ) : motosFiltradas.length === 0 ? (
-                    <div className="col-span-full text-center py-20 text-slate-400 border-2 border-dashed rounded-xl">
+                    <div className="col-span-full text-center py-20 text-muted-foreground border-2 border-dashed rounded-xl">
                         {termo ? <Search className="w-12 h-12 mx-auto mb-2 opacity-20"/> : <Printer className="w-12 h-12 mx-auto mb-2 opacity-20"/>}
                         <p>{termo ? "Nenhuma moto da fila corresponde à busca." : "Nenhuma moto aguardando etiqueta."}</p>
                     </div>
@@ -418,7 +410,7 @@ function EtiquetagemConteudo() {
                           key={moto.id}
                           id={`moto-${moto.id}`}
                           className={cn(
-                            "bg-white dark:bg-slate-900 shadow-lg hover:shadow-xl transition-all border-2",
+                            "bg-card shadow-lg hover:shadow-xl transition-all border-2",
                             selecionada ? "border-blue-500" : "border-blue-100 dark:border-blue-950",
                             destaque === moto.id && "ring-4 ring-green-400 border-green-500"
                           )}
@@ -427,25 +419,25 @@ function EtiquetagemConteudo() {
                                 <div className="flex items-start justify-between gap-2">
                                     <label className="flex items-center gap-2 cursor-pointer select-none">
                                       <Checkbox checked={selecionada} onCheckedChange={() => alternarSelecao(moto.id)} aria-label={`Selecionar ${moto.sku}`} />
-                                      <ChassiDestacado sku={moto.sku} className="text-xs text-slate-600 dark:text-slate-300" />
+                                      <ChassiDestacado sku={moto.sku} className="text-xs text-muted-foreground" />
                                     </label>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600 shrink-0" onClick={() => setPreviewMoto(moto)} title="Pré-visualizar" aria-label="Pré-visualizar etiqueta">
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary shrink-0" onClick={() => setPreviewMoto(moto)} title="Pré-visualizar" aria-label="Pré-visualizar etiqueta">
                                       <Eye className="w-4 h-4" />
                                     </Button>
                                 </div>
-                                <h3 className="text-xl font-black text-slate-900 dark:text-white leading-tight">{moto.modelo}</h3>
+                                <h3 className="text-xl font-black text-foreground leading-tight">{moto.modelo}</h3>
 
-                                <div className="w-full bg-slate-50 dark:bg-slate-950 p-3 rounded-lg text-xs space-y-1 border border-slate-100 dark:border-slate-800">
+                                <div className="w-full bg-muted/50 p-3 rounded-lg text-xs space-y-1 border border-border">
                                     <div className="flex justify-between gap-2"><span>Cor:</span> <strong className="text-right">{moto.cor || '—'}</strong></div>
                                     <div className="flex justify-between gap-2"><span>Banco:</span> <strong className="text-right">{moto.cor_banco || '—'}</strong></div>
                                     <div className="flex justify-between gap-2"><span>Montador:</span> <strong className="text-right">{moto.montador?.nome?.split(' ')[0] || '—'}</strong></div>
                                 </div>
 
-                                <p className={cn("text-xs flex items-center gap-1", espera >= 60 ? "text-amber-600 font-bold" : "text-slate-400")}>
+                                <p className={cn("text-xs flex items-center gap-1", espera >= 60 ? "text-amber-600 font-bold" : "text-muted-foreground")}>
                                   <Clock className="w-3 h-3" /> Aguardando há {formatarDuracaoMin(espera)}
                                 </p>
 
-                                <Button onClick={() => imprimir([moto])} disabled={imprimindo || !modeloAtual} className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-lg shadow-blue-600/20">
+                                <Button onClick={() => imprimir([moto])} disabled={imprimindo || !modeloAtual} className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold shadow-lg shadow-primary/20">
                                     <Printer className="mr-2 w-5 h-5"/> IMPRIMIR {modeloAtual ? `(${modeloAtual.largura}×${modeloAtual.altura})` : ""}
                                 </Button>
                             </CardContent>
@@ -475,19 +467,19 @@ function EtiquetagemConteudo() {
 
         {/* PRÉ-VISUALIZAÇÃO */}
         <Dialog open={!!previewMoto} onOpenChange={(open) => !open && setPreviewMoto(null)}>
-          <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 sm:max-w-xl">
+          <DialogContent className="bg-card border-border sm:max-w-xl">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2"><Eye className="w-5 h-5 text-blue-600" /> Pré-visualização</DialogTitle>
+              <DialogTitle className="flex items-center gap-2"><Eye className="w-5 h-5 text-primary" /> Pré-visualização</DialogTitle>
               <DialogDescription>{modeloAtual?.nome} — exatamente como será impresso.</DialogDescription>
             </DialogHeader>
             {previewMoto && modeloAtual && (
-              <div className="bg-slate-100 dark:bg-slate-900 rounded-xl p-2">
+              <div className="bg-muted rounded-xl p-2">
                 <PreviewEtiqueta modelo={modeloAtual} dados={paraDados(previewMoto)} alturaMaxima={520} />
               </div>
             )}
             <DialogFooter>
               <Button variant="ghost" onClick={() => setPreviewMoto(null)}>Fechar</Button>
-              <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => { const m = previewMoto; setPreviewMoto(null); if (m) imprimir([m]); }}>
+              <Button className="bg-primary hover:bg-primary/90 text-white" onClick={() => { const m = previewMoto; setPreviewMoto(null); if (m) imprimir([m]); }}>
                 <Printer className="w-4 h-4 mr-2" /> Imprimir
               </Button>
             </DialogFooter>
@@ -496,9 +488,9 @@ function EtiquetagemConteudo() {
 
         {/* CONFERÊNCIA DAS ETIQUETAS IMPRESSAS */}
         <Dialog open={lote.length > 0} onOpenChange={(open) => !open && !enviandoEstoque && fecharLote()}>
-            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 sm:max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
+            <DialogContent className="bg-card border-border sm:max-w-lg" onInteractOutside={(e) => e.preventDefault()}>
                 <DialogHeader>
-                    <DialogTitle className="text-blue-600 flex items-center gap-2 text-xl font-black">
+                    <DialogTitle className="text-primary flex items-center gap-2 text-xl font-black">
                          <CheckCircle2 className="w-6 h-6"/> Conferência de Etiquetas
                     </DialogTitle>
                     <DialogDescription>
@@ -509,7 +501,7 @@ function EtiquetagemConteudo() {
 
                 <div className="space-y-4 py-2">
                     <form onSubmit={(e) => { e.preventDefault(); processarLeitura(leitura); }} className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                        <label className="text-xs font-black text-muted-foreground uppercase tracking-wider flex items-center gap-1">
                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500"/> Leitura da etiqueta ({confirmados.size}/{lote.length} conferidas)
                         </label>
                         <Input
@@ -531,14 +523,14 @@ function EtiquetagemConteudo() {
                         {lote.map((moto) => {
                           const ok = confirmados.has(moto.id);
                           return (
-                            <div key={moto.id} className={cn("flex items-center gap-3 p-3 rounded-xl border", ok ? "border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-900" : "border-slate-200 dark:border-slate-800")}>
+                            <div key={moto.id} className={cn("flex items-center gap-3 p-3 rounded-xl border", ok ? "border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-900" : "border-border")}>
                               {ok ? <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" /> : <Circle className="w-5 h-5 text-slate-300 shrink-0" />}
                               <div className="min-w-0 flex-1">
-                                <p className="font-bold text-sm text-slate-800 dark:text-white truncate">{moto.modelo}</p>
-                                <ChassiDestacado sku={moto.sku} className="text-xs text-slate-500" />
+                                <p className="font-bold text-sm text-foreground truncate">{moto.modelo}</p>
+                                <ChassiDestacado sku={moto.sku} className="text-xs text-muted-foreground" />
                               </div>
                               {!ok && (
-                                <Button variant="ghost" size="sm" className="shrink-0 text-blue-600" onClick={() => imprimir([moto], config?.modelos.find((m) => m.id === modeloReimpressao) || modeloAtual)} disabled={imprimindo}>
+                                <Button variant="ghost" size="sm" className="shrink-0 text-primary" onClick={() => imprimir([moto], config?.modelos.find((m) => m.id === modeloReimpressao) || modeloAtual)} disabled={imprimindo}>
                                   <Printer className="w-4 h-4 mr-1" /> Reimprimir
                                 </Button>
                               )}
@@ -548,9 +540,9 @@ function EtiquetagemConteudo() {
                     </div>
 
                     {config && config.modelos.length > 1 && (
-                      <div className="flex flex-col sm:flex-row gap-2 sm:items-center p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                        <span className="text-xs text-slate-500 shrink-0">Imprimir outra etiqueta:</span>
-                        <select value={modeloReimpressao} onChange={(e) => setModeloReimpressao(e.target.value)} className="h-9 flex-1 min-w-0 rounded-md border border-input bg-white dark:bg-slate-950 px-2 text-sm">
+                      <div className="flex flex-col sm:flex-row gap-2 sm:items-center p-3 rounded-xl bg-muted/50 border border-border">
+                        <span className="text-xs text-muted-foreground shrink-0">Imprimir outra etiqueta:</span>
+                        <select value={modeloReimpressao} onChange={(e) => setModeloReimpressao(e.target.value)} className="h-9 flex-1 min-w-0 rounded-md border border-input bg-card px-2 text-sm">
                           {config.modelos.map((m) => <option key={m.id} value={m.id}>{m.nome} ({m.largura}×{m.altura})</option>)}
                         </select>
                         <Button size="sm" variant="outline" className="shrink-0" disabled={imprimindo} onClick={() => imprimir(lote, config.modelos.find((m) => m.id === modeloReimpressao) || modeloAtual)}>
@@ -560,14 +552,14 @@ function EtiquetagemConteudo() {
                     )}
 
                     {/* Declaração Visual */}
-                    <label className="flex items-start gap-3 p-3 rounded-lg border border-blue-100 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-950/20 cursor-pointer select-none">
+                    <label className="flex items-start gap-3 p-3 rounded-lg border border-info/30 bg-info/10 cursor-pointer select-none">
                         <input
                              type="checkbox"
                              checked={declaracaoLida}
                              onChange={(e) => setDeclaracaoLida(e.target.checked)}
-                             className="mt-1 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                             className="mt-1 w-4 h-4 rounded text-primary focus:ring-ring border-slate-300"
                         />
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                        <span className="text-sm font-medium text-foreground/90">
                              Confirmo que as etiquetas conferidas foram impressas e fixadas nas caixas das motos.
                         </span>
                     </label>
@@ -583,7 +575,7 @@ function EtiquetagemConteudo() {
                          className={`h-11 font-bold ${
                               declaracaoLida && confirmados.size > 0
                                    ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-600/20'
-                                   : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'
+                                   : 'bg-slate-100 text-muted-foreground dark:bg-slate-800 dark:text-slate-600'
                          }`}
                     >
                          {enviandoEstoque ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enviando...</> : `Enviar ${confirmados.size} ao Estoque`}

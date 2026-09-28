@@ -1,12 +1,12 @@
 /** @type {import('tailwindcss').Config} */
+const { fontFamily } = require("tailwindcss/defaultTheme");
+
+// Cores definidas como variáveis HSL em src/app/globals.css (tema claro e escuro).
+const cor = (nome) => `hsl(var(--${nome}) / <alpha-value>)`;
+
 module.exports = {
   darkMode: ["class"],
-  content: [
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
-  ],
+  content: ["./src/**/*.{ts,tsx}"],
   prefix: "",
   theme: {
     container: {
@@ -17,45 +17,42 @@ module.exports = {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ["var(--font-geist-sans)", ...fontFamily.sans],
+        mono: ["var(--font-geist-mono)", ...fontFamily.mono],
+      },
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
-        primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
-        },
-        secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
-        },
-        destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
-        },
-        muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
-        },
-        accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
-        },
-        popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
-        },
-        card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+        border: cor("border"),
+        input: cor("input"),
+        ring: cor("ring"),
+        background: cor("background"),
+        foreground: cor("foreground"),
+        primary: { DEFAULT: cor("primary"), foreground: cor("primary-foreground") },
+        secondary: { DEFAULT: cor("secondary"), foreground: cor("secondary-foreground") },
+        destructive: { DEFAULT: cor("destructive"), foreground: cor("destructive-foreground") },
+        success: { DEFAULT: cor("success"), foreground: cor("success-foreground") },
+        warning: { DEFAULT: cor("warning"), foreground: cor("warning-foreground") },
+        info: { DEFAULT: cor("info"), foreground: cor("info-foreground") },
+        muted: { DEFAULT: cor("muted"), foreground: cor("muted-foreground") },
+        accent: { DEFAULT: cor("accent"), foreground: cor("accent-foreground") },
+        popover: { DEFAULT: cor("popover"), foreground: cor("popover-foreground") },
+        card: { DEFAULT: cor("card"), foreground: cor("card-foreground") },
+        sidebar: {
+          DEFAULT: cor("sidebar"),
+          foreground: cor("sidebar-foreground"),
+          border: cor("sidebar-border"),
+          accent: cor("sidebar-accent"),
+          "accent-foreground": cor("sidebar-accent-foreground"),
         },
       },
       borderRadius: {
+        xl: "calc(var(--radius) + 4px)",
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        xs: "0 1px 2px 0 rgb(0 0 0 / 0.04)",
       },
       keyframes: {
         "accordion-down": {
@@ -74,4 +71,4 @@ module.exports = {
     },
   },
   plugins: [require("tailwindcss-animate")],
-}
+};

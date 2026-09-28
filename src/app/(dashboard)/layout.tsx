@@ -1,59 +1,86 @@
 "use client";
 
-import { useState } from "react";
-import { Sidebar } from "@/components/Sidebar";
-import { Header } from "@/components/Header"; // <--- Usaremos este componente inteligente
-import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { CentralSolicitacoes } from "@/components/CentralSolicitacoes";
-import { SessionWatcher } from "@/components/SessionWatcher";
+import { useState, useSyncExternalStore } from "react";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { Header } from "@/components/layout/Header";
+import { GuardaSessao } from "@/components/layout/GuardaSessao";
+import { BuscaRapida } from "@/components/layout/BuscaRapida";
+import { CentralSolicitacoes } from "@/components/layout/CentralSolicitacoes";
+import { AvisoOffline } from "@/components/layout/AvisoOffline";
+import { NovidadesV2 } from "@/components/layout/NovidadesV2";
+
+const CHAVE_COMPACTO = "sgm_menu_compacto";
+const EVENTO_COMPACTO = "sgm:menu-compacto";
+
+function lerCompacto() {
+  try {
+    return localStorage.getItem(CHAVE_COMPACTO) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function assinarCompacto(f: () => void) {
+  window.addEventListener(EVENTO_COMPACTO, f);
+  return () => window.removeEventListener(EVENTO_COMPACTO, f);
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [menuMovel, setMenuMovel] = useState(false);
+  const compacto = useSyncExternalStore(assinarCompacto, lerCompacto, () => false);
+
+  const alternarCompacto = () => {
+    try {
+      localStorage.setItem(CHAVE_COMPACTO, compacto ? "0" : "1");
+    } catch {
+      /* ignore */
+    }
+    window.dispatchEvent(new Event(EVENTO_COMPACTO));
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
-      
-      {/* Mantém a sessão válida (expiração, usuário arquivado, mudança de cargo) */}
-      <SessionWatcher />
-
-      {/* Central de Notificações (Apenas para Gestores Logados) */}
-      <CentralSolicitacoes />
-      
-      {/* --- DESKTOP SIDEBAR (Fixo na esquerda, escondido no mobile) --- */}
-      <aside className="hidden lg:flex flex-col w-72 fixed inset-y-0 z-50 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 print:hidden">
-         <Sidebar />
+    <div className="min-h-screen bg-background">
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 hidden border-r border-sidebar-border transition-[width] duration-200 lg:block print:hidden",
+          compacto ? "w-[72px]" : "w-64",
+        )}
+      >
+        <Sidebar compacto={compacto} />
       </aside>
 
-      {/* --- CONTEÚDO PRINCIPAL --- */}
-      <main className="lg:pl-72 print:pl-0 flex flex-col min-h-screen transition-all duration-300">
-        
-        {/* 1. HEADER INTELIGENTE 
-            Passamos a função para abrir o menu mobile quando clicar no hambúrguer do Header 
-        */}
-        <Header onMenuClick={() => setMobileMenuOpen(true)} />
+      <Sheet open={menuMovel} onOpenChange={setMenuMovel}>
+        <SheetContent side="left" className="w-72 border-r p-0 sm:max-w-72" aria-describedby={undefined}>
+          <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
+          <SheetDescription className="sr-only">Telas do sistema</SheetDescription>
+          <Sidebar aoNavegar={() => setMenuMovel(false)} />
+        </SheetContent>
+      </Sheet>
 
-        {/* 2. MENU MOBILE (SHEET)
-            Controlado pelo estado mobileMenuOpen.
-            Removemos o SheetTrigger porque o botão agora fica dentro do <Header />
-        */}
-        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetContent side="left" className="p-0 w-72 border-r-slate-200 dark:border-r-slate-800 bg-white dark:bg-slate-950">
-             <SheetTitle className="sr-only">Menu de Navegação</SheetTitle>
-             <SheetDescription className="sr-only">Menu Principal</SheetDescription>
-             
-             {/* Passamos onClose para fechar o menu ao clicar em um link */}
-             <Sidebar onClose={() => setMobileMenuOpen(false)} />
-          </SheetContent>
-        </Sheet>
+      <div className={cn("flex min-h-screen flex-col transition-[padding] duration-200 print:pl-0", compacto ? "lg:pl-[72px]" : "lg:pl-64")}>
+        <Header aoAbrirMenu={() => setMenuMovel(true)} compacto={compacto} aoAlternarCompacto={alternarCompacto} />
+        <AvisoOffline />
+        <main className="flex-1 overflow-x-hidden p-4 md:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl space-y-6">
+            <GuardaSessao>{children}</GuardaSessao>
+          </div>
+        </main>
+      </div>
 
-        {/* 3. ÁREA DE CONTEÚDO */}
-        <div className="flex-1 p-4 md:p-8 overflow-x-hidden">
-           <div className="max-w-7xl mx-auto space-y-6">
-              {children}
-           </div>
-        </div>
-
-      </main>
+      <GuardaSessaoAuxiliares />
     </div>
+  );
+}
+
+/** Componentes globais que só fazem sentido com alguém logado. */
+function GuardaSessaoAuxiliares() {
+  return (
+    <>
+      <BuscaRapida />
+      <CentralSolicitacoes />
+      <NovidadesV2 />
+    </>
   );
 }

@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { RoleGuard } from "@/components/RoleGuard";
 import {
   Wrench, Play, Pause, CheckCircle2, AlertTriangle, ArrowRight, RotateCcw, Loader2, Clock, PaintBucket, ScanBarcode, Timer, Trash2, XCircle
 } from "lucide-react";
@@ -16,7 +15,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { registrarLog } from "@/lib/logger";
-import { getUsuarioLogado } from "@/lib/auth";
+import { getUsuarioLogado, podeAgora, usePode } from "@/lib/auth";
+import { PageHeader } from "@/components/sgm/PageHeader";
+import { EmptyState } from "@/components/sgm/EmptyState";
 import { useConfigGeral } from "@/lib/config-sistema";
 import { MOTIVOS_PAUSA } from "@/lib/constantes";
 import { formatarCronometro, formatarDuracaoMin, minutosDesde } from "@/lib/datas";
@@ -36,7 +37,9 @@ interface Moto {
   updated_at?: string | null;
   created_at?: string | null;
   rework_count?: number | null;
+  montador_id?: string | null;
   supervisor?: { nome: string } | null;
+  montador?: { nome: string; ativo: boolean | null } | null;
 }
 
 const MOTIVOS_EXCLUSAO = ["Chassi bipado por engano", "Moto duplicada na fila", "Caixa devolvida ao fornecedor"];
@@ -44,6 +47,7 @@ const MOTIVOS_EXCLUSAO = ["Chassi bipado por engano", "Moto duplicada na fila", 
 export default function MontagemPage() {
   const { config } = useConfigGeral();
   const CHECKLIST_ITENS = config.checklist;
+  const podeRemover = usePode("montagem.remover");
 
   const [loading, setLoading] = useState(true);
   const [modo, setModo] = useState<'fila' | 'producao'>('fila');
@@ -76,9 +80,9 @@ export default function MontagemPage() {
     const [{ data: retrabalho }, { data: caixas }] = await Promise.all([
       supabase
         .from('motos')
-        .select(`*, supervisor:funcionarios!motos_supervisor_id_fkey(nome)`)
+        .select(`*, supervisor:funcionarios!motos_supervisor_id_fkey(nome), montador:funcionarios!motos_montador_id_fkey(nome, ativo)`)
         .eq('status', 'retrabalho_montagem')
-        .eq('montador_id', userId),
+        .order('updated_at', { ascending: true }),
       supabase
         .from('motos')
         .select('*')
@@ -86,7 +90,11 @@ export default function MontagemPage() {
         .order('created_at', { ascending: true }),
     ]);
 
-    if(retrabalho) setFilaRetrabalho(retrabalho as Moto[]);
+    // Retrabalho volta para quem montou; supervisores (e montadores, se quem montou saiu da empresa) também podem assumir
+    if (retrabalho) {
+      const aprovaPausas = podeAgora('pausas.aprovar');
+      setFilaRetrabalho((retrabalho as Moto[]).filter((m) => m.montador_id === userId || aprovaPausas || m.montador?.ativo === false));
+    }
     if(caixas) setFila(caixas as Moto[]);
   }, []);
 
@@ -254,6 +262,15 @@ export default function MontagemPage() {
     toast.success("Checklist preenchido!");
   };
 
+  const salvarCores = (cor: string, banco: string) => {
+    if (!motoAtiva || motoAtiva.status !== 'em_producao') return;
+    supabase.from('motos').update({ cor: cor || null, cor_banco: banco || null })
+      .eq('id', motoAtiva.id).eq('status', 'em_producao')
+      .then(({ error }) => { if (error) console.error("Cores não salvas:", error.message); });
+  };
+  const escolherCorMoto = (cor: string) => { setCorMotoInput(cor); salvarCores(cor, corBancoInput); };
+  const escolherCorBanco = (cor: string) => { setCorBancoInput(cor); salvarCores(corMotoInput, cor); };
+
   const toggleCheck = (item: string) => {
     setChecklist(prev => ({ ...prev, [item]: !prev[item] }));
   };
@@ -355,40 +372,25 @@ export default function MontagemPage() {
       toast.success("Solicitação cancelada.");
   };
 
-  // Ajusta o timer descontando o tempo pausado
+  // Retomar: o banco desconta o tempo parado do cronômetro e encerra o registro da pausa
   const handleRetomar = async () => {
       if (!motoAtiva) return;
       setProcessando(true);
       try {
-        // 1. Início da pausa: registro em pausas_producao (mais confiável) ou momento em que a moto foi pausada
-        const { data: pausas } = await supabase
-          .from('pausas_producao')
-          .select('inicio')
-          .eq('moto_id', motoAtiva.id)
-          .order('inicio', { ascending: false })
-          .limit(1);
-        const inicioPausaIso = pausas?.[0]?.inicio || motoAtiva.updated_at;
-        const inicioPausa = inicioPausaIso ? new Date(inicioPausaIso).getTime() : Date.now();
-        const agoraMs = Date.now();
-        const tempoPausado = Math.max(0, agoraMs - inicioPausa);
-
-        // 2. Ajusta o inicio_montagem para frente
-        const inicioOriginal = motoAtiva.inicio_montagem ? new Date(motoAtiva.inicio_montagem).getTime() : agoraMs;
-        const novoInicio = new Date(Math.min(agoraMs, inicioOriginal + tempoPausado)).toISOString();
-
-        // 3. Atualiza no banco
-        const { data, error } = await supabase.from('motos').update({
-            status: 'em_producao',
-            inicio_montagem: novoInicio,
-            updated_at: new Date().toISOString()
-        }).eq('id', motoAtiva.id).eq('status', 'pausado').select('id');
+        const { data, error } = await supabase.from('motos')
+          .update({ status: 'em_producao' })
+          .eq('id', motoAtiva.id).eq('status', 'pausado').select('id');
 
         if (error) throw error;
         if (!data || data.length === 0) {
           toast.warning("A moto não está mais pausada. Atualizando...");
         } else {
-          toast.success("Produção Retomada");
-          await registrarLog('PAUSA_RETOMADA', motoAtiva.sku, { pausa_min: Math.round(tempoPausado / 60000) });
+          const { data: pausa } = await supabase.from('pausas_producao')
+            .select('inicio, fim').eq('moto_id', motoAtiva.id).not('fim', 'is', null)
+            .order('fim', { ascending: false }).limit(1);
+          const minutos = pausa?.[0] ? Math.round((new Date(pausa[0].fim).getTime() - new Date(pausa[0].inicio).getTime()) / 60000) : null;
+          toast.success("Produção retomada");
+          await registrarLog('PAUSA_RETOMADA', motoAtiva.sku, { pausa_min: minutos });
         }
         verificarEstadoAtual();
       } catch (err) {
@@ -423,7 +425,7 @@ export default function MontagemPage() {
   if (loading) return (
     <div className="p-8 flex flex-col items-center justify-center h-full space-y-4">
         <Skeleton className="h-64 w-full rounded-2xl" />
-        <p className="text-slate-500 animate-pulse">Sincronizando com a linha...</p>
+        <p className="text-muted-foreground animate-pulse">Sincronizando com a linha...</p>
     </div>
   );
 
@@ -433,18 +435,16 @@ export default function MontagemPage() {
   const emRetrabalho = !!motoAtiva?.observacoes?.includes('RETRABALHO');
 
   return (
-    <RoleGuard allowedRoles={['montador', 'supervisor', 'master']}>
       <div className="space-y-6 animate-in fade-in pb-20">
 
         {modo === 'fila' && (
           <>
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-3xl font-black text-slate-900 dark:text-white">Central de Montagem</h1>
-                <p className="text-slate-500">Selecione uma tarefa para iniciar.</p>
-              </div>
-              <Badge variant="outline" className="hidden sm:flex">{fila.length} na fila</Badge>
-            </div>
+            <PageHeader
+              icone={Wrench}
+              titulo="Linha de montagem"
+              descricao="Escolha a próxima caixa da fila ou corrija um retrabalho."
+              acoes={<Badge variant="outline" className="h-8 px-3 text-sm">{fila.length} na fila</Badge>}
+            />
 
             {motoAtiva && motoAtiva.status === 'pausado' && (
                 <div className="mb-8 animate-in slide-in-from-top-4 duration-500">
@@ -453,8 +453,8 @@ export default function MontagemPage() {
                              <div className="flex items-center gap-4">
                                 <Clock className="w-8 h-8 text-amber-600 shrink-0"/>
                                 <div>
-                                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">Produção Pausada</h3>
-                                    <p className="text-slate-500">{motoAtiva.modelo} - {motoAtiva.sku}</p>
+                                    <h3 className="text-xl font-bold text-foreground">Produção Pausada</h3>
+                                    <p className="text-muted-foreground">{motoAtiva.modelo} - {motoAtiva.sku}</p>
                                     <p className="text-xs text-amber-600 mt-1 font-bold">O timer continuará de onde parou ao retomar.</p>
                                 </div>
                              </div>
@@ -479,7 +479,7 @@ export default function MontagemPage() {
                                         <Badge variant="destructive" className="mb-2 animate-pulse">CORRIGIR ERRO</Badge>
                                         <h3 className="text-xl font-bold">{moto.modelo}</h3>
                                         <p className="text-red-700 dark:text-red-400 font-bold mt-1">&quot;{moto.observacoes?.replace(/RETRABALHO.*?: /, '')}&quot;</p>
-                                        <p className="text-xs text-slate-500 mt-2">Reprovado por: {moto.supervisor?.nome || '—'}</p>
+                                        <p className="text-xs text-muted-foreground mt-2">Reprovado por: {moto.supervisor?.nome || '—'}{moto.montador_id !== getUsuarioLogado()?.id && moto.montador?.nome ? ` · montada por ${moto.montador.nome}` : ''}</p>
                                     </div>
                                     <Button onClick={() => iniciarTrabalho(moto, true)} disabled={processando || !!motoAtiva} className="bg-red-600 hover:bg-red-700 text-white font-bold h-12">
                                         <RotateCcw className="w-5 h-5 mr-2" /> CORRIGIR
@@ -492,34 +492,34 @@ export default function MontagemPage() {
             )}
 
             <div className={motoAtiva && motoAtiva.status === 'pausado' ? 'opacity-40 pointer-events-none grayscale' : ''}>
-                <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+                <h3 className="text-lg font-bold text-foreground/90 mb-4 flex items-center gap-2">
                     <Wrench className="w-5 h-5" /> Fila de Produção
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {fila.length === 0 ? (
-                    <div className="col-span-full py-12 text-center border-2 border-dashed rounded-xl">
-                        <p className="text-slate-400">Nenhuma caixa aguardando.</p>
-                    </div>
+                    <EmptyState icone={Wrench} titulo="Nenhuma caixa aguardando" descricao="Assim que uma caixa for registrada na entrada, ela aparece aqui." className="col-span-full" />
                 ) : (
                     fila.map((moto, idx) => (
-                    <Card key={moto.id} className="hover:border-blue-500 transition-all border-l-4 border-l-transparent hover:border-l-blue-500">
+                    <Card key={moto.id} className="hover:border-primary/60 transition-all border-l-4 border-l-transparent hover:border-l-primary">
                         <CardContent className="p-6">
                             <div className="flex justify-between items-start mb-4 gap-2">
                                 <Badge variant="secondary" className="font-mono">{moto.sku}</Badge>
-                                <Badge className={cn("border-0", idx === 0 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400")}>
+                                <Badge className={cn("border-0", idx === 0 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-info/10 text-info")}>
                                   {idx === 0 ? "PRÓXIMA" : "NOVA"}
                                 </Badge>
                             </div>
                             <h3 className="text-xl font-bold mb-1">{moto.modelo}</h3>
-                            <p className="text-slate-500 text-sm">{moto.localizacao || 'Sem local'}</p>
-                            <p className="text-xs text-slate-400 mb-6 flex items-center gap-1 mt-1"><Clock className="w-3 h-3" /> Na fila há {formatarDuracaoMin(minutosDesde(moto.created_at))}</p>
+                            <p className="text-muted-foreground text-sm">{moto.localizacao || 'Sem local'}</p>
+                            <p className="text-xs text-muted-foreground mb-6 flex items-center gap-1 mt-1"><Clock className="w-3 h-3" /> Na fila há {formatarDuracaoMin(minutosDesde(moto.created_at))}</p>
                             <div className="flex gap-2">
-                                <Button onClick={() => iniciarTrabalho(moto, false)} disabled={processando} className="flex-1 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold">
+                                <Button onClick={() => iniciarTrabalho(moto, false)} disabled={processando} className="flex-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white font-bold">
                                     <Play className="w-4 h-4 mr-2" /> INICIAR
                                 </Button>
-                                <Button variant="destructive" size="icon" onClick={() => { setMotivoExclusao(MOTIVOS_EXCLUSAO[0]); setMotoExcluindo(moto); }} title="Remover da Linha" aria-label="Remover da linha">
-                                    <Trash2 className="w-4 h-4" />
-                                </Button>
+                                {podeRemover && (
+                                  <Button variant="outline" size="icon" className="text-destructive" onClick={() => { setMotivoExclusao(MOTIVOS_EXCLUSAO[0]); setMotoExcluindo(moto); }} title="Remover da linha" aria-label="Remover da linha">
+                                      <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -533,7 +533,7 @@ export default function MontagemPage() {
         {modo === 'producao' && motoAtiva && (
           <div className="max-w-4xl mx-auto">
              <div className={cn(
-                emRetrabalho ? 'bg-red-600' : atrasado ? 'bg-amber-600' : 'bg-blue-600',
+                emRetrabalho ? 'bg-primary' : atrasado ? 'bg-amber-600' : 'bg-zinc-900 dark:bg-zinc-800',
                 "text-white p-6 rounded-t-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-4 transition-colors duration-500")}>
                 <div>
                    <p className="text-white/80 text-sm font-bold uppercase tracking-widest mb-1 flex items-center gap-2">
@@ -554,15 +554,15 @@ export default function MontagemPage() {
                 </div>
              </div>
 
-            <Card className="relative rounded-t-none border-t-0 bg-white dark:bg-slate-900 shadow-xl">
+            <Card className="relative rounded-t-none border-t-0 bg-card shadow-xl">
               <CardContent className="p-6 md:p-8 space-y-8">
 
                 {aguardandoAutorizacao && (
                     <div className="absolute inset-0 bg-white/90 dark:bg-black/90 z-20 flex flex-col items-center justify-center rounded-b-xl backdrop-blur-sm animate-in fade-in p-6 text-center">
-                        <Loader2 className="w-16 h-16 text-blue-600 animate-spin mb-4" />
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Solicitação Enviada!</h2>
-                        <p className="text-slate-500 text-lg">Aguarde a liberação do supervisor...</p>
-                        <p className="text-xs text-slate-400 mt-2">O timer será pausado assim que autorizado.</p>
+                        <Loader2 className="w-16 h-16 text-primary animate-spin mb-4" />
+                        <h2 className="text-2xl font-bold text-foreground">Solicitação Enviada!</h2>
+                        <p className="text-muted-foreground text-lg">Aguarde a liberação do supervisor...</p>
+                        <p className="text-xs text-muted-foreground mt-2">O timer será pausado assim que autorizado.</p>
                         <Button variant="outline" className="mt-6" onClick={cancelarSolicitacaoPausa} disabled={processando}>
                             <XCircle className="w-4 h-4 mr-2" /> Cancelar solicitação
                         </Button>
@@ -576,7 +576,7 @@ export default function MontagemPage() {
                     </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-6 gap-4">
+                <div className="flex flex-col sm:flex-row justify-between items-center border-b border-border pb-6 gap-4">
                    <h2 className="text-xl font-bold flex items-center gap-2">
                      <CheckCircle2 className="w-6 h-6 text-green-600"/> Checklist de Segurança
                      <Badge variant="secondary" className="ml-1">{CHECKLIST_ITENS.length - pendentesChecklist.length}/{CHECKLIST_ITENS.length}</Badge>
@@ -596,20 +596,20 @@ export default function MontagemPage() {
                     <div key={item} role="checkbox" aria-checked={!!checklist[item]} tabIndex={0}
                       onClick={() => toggleCheck(item)}
                       onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleCheck(item); } }}
-                      className={`flex items-center space-x-3 p-4 rounded-xl border-2 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${checklist[item] ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-slate-100 dark:border-slate-800 hover:border-slate-300'}`}>
+                      className={`flex items-center space-x-3 p-4 rounded-xl border-2 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring ${checklist[item] ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-border hover:border-slate-300'}`}>
                       <Checkbox checked={!!checklist[item]} tabIndex={-1} className="data-[state=checked]:bg-green-500 w-5 h-5 pointer-events-none" />
                       <span className="text-sm font-medium select-none">{item}</span>
                     </div>
                   ))}
                 </div>
 
-                <div className="p-6 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2"><PaintBucket className="w-4 h-4"/> Acabamento Final</h3>
+                <div className="p-6 bg-muted/50 rounded-xl border border-border">
+                    <h3 className="text-sm font-bold text-muted-foreground uppercase mb-4 flex items-center gap-2"><PaintBucket className="w-4 h-4"/> Acabamento Final</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
                             <label className="text-sm font-bold">Cor da Carenagem</label>
-                            <Select value={corMotoInput} onValueChange={setCorMotoInput}>
-                                <SelectTrigger className="h-12 bg-white dark:bg-slate-900"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <Select value={corMotoInput} onValueChange={escolherCorMoto}>
+                                <SelectTrigger className="h-12 bg-card"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                                 <SelectContent className="max-h-[300px]">
                                     {config.coresCarenagem.map(c => (
                                       <SelectItem key={c.nome} value={c.nome}>
@@ -627,8 +627,8 @@ export default function MontagemPage() {
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-bold">Cor do Banco</label>
-                            <Select value={corBancoInput} onValueChange={setCorBancoInput}>
-                                <SelectTrigger className="h-12 bg-white dark:bg-slate-900"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                            <Select value={corBancoInput} onValueChange={escolherCorBanco}>
+                                <SelectTrigger className="h-12 bg-card"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                                 <SelectContent className="max-h-[300px]">
                                     {config.coresBanco.map(c => (
                                       <SelectItem key={c.nome} value={c.nome}>
@@ -647,7 +647,7 @@ export default function MontagemPage() {
                     </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <div className="pt-2 border-t border-border">
                    <Button onClick={abrirFinalizacao} disabled={processando} className="w-full h-16 text-lg font-bold bg-green-600 hover:bg-green-700 shadow-lg shadow-green-600/20 transition-all hover:scale-[1.01]">
                       {emRetrabalho ? 'CORREÇÃO FINALIZADA' : 'FINALIZAR MONTAGEM'} <ArrowRight className="ml-2 w-6 h-6" />
                    </Button>
@@ -659,7 +659,7 @@ export default function MontagemPage() {
 
         {/* SOLICITAÇÃO DE PAUSA */}
         <Dialog open={dialogoPausa} onOpenChange={(o) => !processando && setDialogoPausa(o)}>
-          <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+          <DialogContent className="bg-card border-border">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-amber-600"><Pause className="w-5 h-5" /> Solicitar Pausa</DialogTitle>
               <DialogDescription>O supervisor precisa autorizar. O timer para somente após a aprovação.</DialogDescription>
@@ -670,7 +670,7 @@ export default function MontagemPage() {
                   key={m}
                   type="button"
                   onClick={() => setMotivoPausa(m)}
-                  className={cn("h-14 rounded-xl border-2 text-sm font-bold transition-colors px-2", motivoPausa === m ? "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" : "border-slate-200 dark:border-slate-800 hover:border-amber-300")}
+                  className={cn("h-14 rounded-xl border-2 text-sm font-bold transition-colors px-2", motivoPausa === m ? "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" : "border-border hover:border-amber-300")}
                 >
                   {m}
                 </button>
@@ -690,15 +690,15 @@ export default function MontagemPage() {
 
         {/* CONFIRMAÇÃO DE FINALIZAÇÃO */}
         <Dialog open={dialogoFinalizar} onOpenChange={(o) => !processando && setDialogoFinalizar(o)}>
-          <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+          <DialogContent className="bg-card border-border">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-green-600"><CheckCircle2 className="w-5 h-5" /> Finalizar montagem?</DialogTitle>
               <DialogDescription>A moto seguirá para a Inspeção de Qualidade.</DialogDescription>
             </DialogHeader>
             {motoAtiva && (
-              <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-sm space-y-1">
-                <p className="font-black text-lg text-slate-800 dark:text-white">{motoAtiva.modelo}</p>
-                <p className="font-mono text-slate-500">{motoAtiva.sku}</p>
+              <div className="bg-muted/50 p-4 rounded-xl border border-border text-sm space-y-1">
+                <p className="font-black text-lg text-foreground">{motoAtiva.modelo}</p>
+                <p className="font-mono text-muted-foreground">{motoAtiva.sku}</p>
                 <p>Carenagem: <strong>{corMotoInput}</strong> · Banco: <strong>{corBancoInput}</strong></p>
                 <p>Tempo: <strong>{formatarCronometro(decorridoMs)}</strong></p>
               </div>
@@ -714,18 +714,18 @@ export default function MontagemPage() {
 
         {/* REMOÇÃO DA FILA */}
         <Dialog open={!!motoExcluindo} onOpenChange={(o) => !o && !processando && setMotoExcluindo(null)}>
-          <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+          <DialogContent className="bg-card border-border">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-red-600"><Trash2 className="w-5 h-5" /> Remover moto da linha</DialogTitle>
               <DialogDescription>O registro é apagado e a remoção fica registrada na auditoria.</DialogDescription>
             </DialogHeader>
             {motoExcluindo && (
               <div className="space-y-3">
-                <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="bg-muted/50 p-3 rounded-xl border border-border">
                   <p className="font-bold">{motoExcluindo.modelo}</p>
-                  <p className="font-mono text-sm text-slate-500">{motoExcluindo.sku}</p>
+                  <p className="font-mono text-sm text-muted-foreground">{motoExcluindo.sku}</p>
                 </div>
-                <label className="text-xs font-black text-slate-400 uppercase tracking-wider">Motivo</label>
+                <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">Motivo</label>
                 <Select value={motivoExclusao} onValueChange={setMotivoExclusao}>
                   <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -744,6 +744,5 @@ export default function MontagemPage() {
         </Dialog>
 
       </div>
-    </RoleGuard>
   );
 }

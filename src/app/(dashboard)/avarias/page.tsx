@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { RoleGuard } from "@/components/RoleGuard";
+import { usePode } from "@/lib/auth";
+import { PageHeader } from "@/components/sgm/PageHeader";
+import { EmptyState } from "@/components/sgm/EmptyState";
+import { FotosMoto } from "@/components/sgm/FotosMoto";
 import { Wrench, AlertOctagon, CheckCircle2, History, Clock, Loader2, RefreshCw, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -39,6 +42,7 @@ interface ReparoHistorico {
 }
 
 export default function AvariasPage() {
+  const podeReparar = usePode("avarias.reparar");
   const [motos, setMotos] = useState<MotoAvaria[]>([]);
   const [historico, setHistorico] = useState<ReparoHistorico[]>([]);
   const [tecnicosSugeridos, setTecnicosSugeridos] = useState<string[]>([]);
@@ -156,15 +160,12 @@ export default function AvariasPage() {
   }, {});
 
   return (
-    <RoleGuard allowedRoles={['supervisor', 'gestor', 'master']}>
       <div className="space-y-6 animate-in fade-in pb-20">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-red-600 flex items-center gap-3">
-               <Wrench className="w-8 h-8" /> Pátio de Avarias
-            </h1>
-            <p className="text-slate-500">Gestão detalhada de motos segregadas para manutenção.</p>
-          </div>
+        <PageHeader
+          icone={AlertOctagon}
+          titulo="Pátio de avarias"
+          descricao="Motos segregadas pela qualidade aguardando reparo. Registre o conserto com fotos."
+          acoes={
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="text-red-700 border-red-200 bg-red-50 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900 px-3 py-1">
               {motos.length} no pátio
@@ -176,17 +177,14 @@ export default function AvariasPage() {
               <RefreshCw className="w-4 h-4" />
             </Button>
           </div>
-        </div>
+          }
+        />
 
         <div className="grid grid-cols-1 gap-4">
             {carregando ? (
                 [1, 2].map(i => <Skeleton key={i} className="h-32 w-full rounded-xl" />)
             ) : motos.length === 0 ? (
-                <div className="text-center py-16 text-slate-400 border-2 border-dashed rounded-2xl">
-                    <CheckCircle2 className="w-12 h-12 mx-auto mb-3 text-green-500/60" />
-                    <p className="font-bold text-slate-600 dark:text-slate-300">Pátio limpo.</p>
-                    <p className="text-sm">Nenhuma moto aguardando reparo.</p>
-                </div>
+                <EmptyState icone={CheckCircle2} titulo="Pátio limpo" descricao="Nenhuma moto aguardando reparo." />
             ) : motos.map(moto => {
                 const tempo = minutosDesde(moto.updated_at);
                 return (
@@ -197,19 +195,22 @@ export default function AvariasPage() {
                                 <AlertOctagon className="text-red-600 w-6 h-6 shrink-0"/>
                                 <h3 className="text-xl font-bold">{moto.modelo}</h3>
                                 <Badge variant="destructive">{rotuloAvaria(moto.status)}</Badge>
-                                <span className={`text-xs font-bold flex items-center gap-1 ${tempo >= 24 * 60 ? 'text-red-600' : 'text-slate-500'}`}>
+                                <span className={`text-xs font-bold flex items-center gap-1 ${tempo >= 24 * 60 ? 'text-red-600' : 'text-muted-foreground'}`}>
                                   <Clock className="w-3 h-3" /> No pátio há {formatarDuracaoMin(tempo)}
                                 </span>
                             </div>
                             <div className="space-y-1 text-sm">
                                 <p><strong>Chassi:</strong> <span className="font-mono">{moto.sku}</span></p>
                                 <p><strong>Problema:</strong> <span className="text-red-600 font-bold uppercase">{moto.detalhes_avaria || '—'}</span></p>
-                                <p className="text-slate-500">Origem: {moto.montador?.nome || '—'}</p>
+                                <p className="text-muted-foreground">Origem: {moto.montador?.nome || '—'}</p>
                             </div>
+                            <FotosMoto motoId={moto.id} sku={moto.sku} etapas={['avaria', 'qualidade']} titulo="Fotos do defeito" className="mt-4" />
                         </div>
-                        <Button onClick={() => abrirReparo(moto)} className="bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white h-12 px-6">
-                            <Wrench className="mr-2 w-4 h-4"/> REALIZAR REPARO
-                        </Button>
+                        {podeReparar && (
+                          <Button onClick={() => abrirReparo(moto)} className="bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white h-12 px-6">
+                              <Wrench className="mr-2 w-4 h-4"/> REALIZAR REPARO
+                          </Button>
+                        )}
                     </CardContent>
                 </Card>
                 );
@@ -217,29 +218,29 @@ export default function AvariasPage() {
         </div>
 
         {/* Histórico recente para acompanhamento da gestão */}
-        <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+        <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base"><History className="w-5 h-5 text-slate-500" /> Reparos concluídos (últimos 30 dias)</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base"><History className="w-5 h-5 text-muted-foreground" /> Reparos concluídos (últimos 30 dias)</CardTitle>
             <CardDescription>Problema, solução aplicada e tempo até a resolução.</CardDescription>
           </CardHeader>
           <CardContent>
             {historico.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-6">Nenhum reparo concluído no período.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">Nenhum reparo concluído no período.</p>
             ) : (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              <div className="divide-y divide-border">
                 {historico.map(h => {
                   const duracao = h.data_resolucao ? Math.max(0, Math.round((new Date(h.data_resolucao).getTime() - new Date(h.created_at).getTime()) / 60000)) : null;
                   return (
                     <div key={h.id} className="py-3 flex flex-col md:flex-row md:items-center gap-2 md:gap-6 text-sm">
                       <div className="md:w-56 shrink-0">
-                        <p className="font-bold text-slate-800 dark:text-slate-100 truncate">{h.modelo}</p>
-                        <p className="font-mono text-xs text-slate-500">{h.sku}</p>
+                        <p className="font-bold text-foreground truncate">{h.modelo}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{h.sku}</p>
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-red-600 dark:text-red-400 text-xs font-bold uppercase">{rotuloAvaria(h.tipo_avaria)} · {h.descricao_problema}</p>
                         <p className="text-emerald-700 dark:text-emerald-400 text-xs mt-0.5">Solução: {h.descricao_solucao || '—'}</p>
                       </div>
-                      <div className="md:text-right text-xs text-slate-500 shrink-0">
+                      <div className="md:text-right text-xs text-muted-foreground shrink-0">
                         <p className="flex md:justify-end items-center gap-1"><User className="w-3 h-3" /> {h.tecnico_nome || '—'}</p>
                         <p>{h.data_resolucao ? new Date(h.data_resolucao).toLocaleDateString('pt-BR') : ''}{duracao !== null ? ` · resolvido em ${formatarDuracaoMin(duracao)}` : ''}</p>
                       </div>
@@ -252,7 +253,7 @@ export default function AvariasPage() {
         </Card>
 
         <Dialog open={modalOpen} onOpenChange={(o) => !salvando && setModalOpen(o)}>
-            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+            <DialogContent className="sm:max-w-lg max-h-[92vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2"><Wrench className="w-5 h-5" /> Registro de Manutenção</DialogTitle>
                   <DialogDescription>
@@ -265,15 +266,18 @@ export default function AvariasPage() {
                   </div>
                 )}
                 <div className="space-y-4 py-2">
+                    {motoAtiva && (
+                      <FotosMoto motoId={motoAtiva.id} sku={motoAtiva.sku} etapas={['reparo']} etapaEnvio="reparo" titulo="Fotos do reparo (recomendado)" />
+                    )}
                     <div className="space-y-2">
-                      <label className="text-xs font-black text-slate-400 uppercase tracking-wider">Técnico responsável</label>
+                      <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">Técnico responsável</label>
                       <Input placeholder="Nome do Técnico" value={tecnico} onChange={e => setTecnico(e.target.value)} list="lista-tecnicos" maxLength={80} />
                       <datalist id="lista-tecnicos">
                         {tecnicosSugeridos.map(n => <option key={n} value={n} />)}
                       </datalist>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-black text-slate-400 uppercase tracking-wider">Serviço realizado</label>
+                      <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">Serviço realizado</label>
                       <Textarea placeholder="O que foi feito? (Peça trocada, ajuste...)" value={solucao} onChange={e => setSolucao(e.target.value)} rows={3} maxLength={500} />
                     </div>
                 </div>
@@ -286,6 +290,5 @@ export default function AvariasPage() {
             </DialogContent>
         </Dialog>
       </div>
-    </RoleGuard>
   );
 }
