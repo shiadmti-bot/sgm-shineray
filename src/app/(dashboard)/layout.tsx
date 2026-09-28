@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header"; // <--- Usaremos este componente inteligente
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { CentralSolicitacoes } from "@/components/CentralSolicitacoes";
+import { SessionWatcher } from "@/components/SessionWatcher";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -12,16 +13,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
       
+      {/* Mantém a sessão válida (expiração, usuário arquivado, mudança de cargo) */}
+      <SessionWatcher />
+
       {/* Central de Notificações (Apenas para Gestores Logados) */}
       <CentralSolicitacoes />
       
       {/* --- DESKTOP SIDEBAR (Fixo na esquerda, escondido no mobile) --- */}
-      <aside className="hidden lg:flex flex-col w-72 fixed inset-y-0 z-50 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+      <aside className="hidden lg:flex flex-col w-72 fixed inset-y-0 z-50 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 print:hidden">
          <Sidebar />
       </aside>
 
       {/* --- CONTEÚDO PRINCIPAL --- */}
-      <main className="lg:pl-72 flex flex-col min-h-screen transition-all duration-300">
+      <main className="lg:pl-72 print:pl-0 flex flex-col min-h-screen transition-all duration-300">
         
         {/* 1. HEADER INTELIGENTE 
             Passamos a função para abrir o menu mobile quando clicar no hambúrguer do Header 

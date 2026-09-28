@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { registrarLog } from "@/lib/logger";
+import { useUsuarioLogado } from "@/lib/auth";
 import { 
-  Search, Plus, Edit, Wrench, Shield, Crown, Briefcase, Archive, RotateCcw, Timer, Trophy, User,
-  Medal, Zap, ShieldCheck, Flame
+  Search, Plus, Edit, Wrench, Shield, Crown, Briefcase, Archive, RotateCcw, Trophy, User,
+  Medal, Zap, ShieldCheck, Flame, Lock, Loader2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -26,7 +27,6 @@ type Tecnico = {
   cargo: 'master' | 'gestor' | 'supervisor' | 'montador';
   email: string;
   matricula?: string;
-  senha?: string;
   ativo: boolean; 
   total_montagens: number;
   total_retrabalhos: number;
@@ -36,10 +36,16 @@ type Tecnico = {
   badges?: string[];
 };
 
+const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function TecnicosPage() {
+  const usuarioLogado = useUsuarioLogado();
+  const currentUserRole = usuarioLogado?.cargo || "";
+  const souMaster = currentUserRole === 'master';
   const [loading, setLoading] = useState(true);
   const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
-  const [currentUserRole, setCurrentUserRole] = useState<string>("");
+  const [confirmacao, setConfirmacao] = useState<{ tipo: 'arquivar' | 'restaurar'; tec: Tecnico } | null>(null);
+  const [alterandoStatus, setAlterandoStatus] = useState(false);
   
   // Filtros
   const [busca, setBusca] = useState("");
@@ -65,12 +71,10 @@ export default function TecnicosPage() {
 
   async function fetchData() {
     setLoading(true);
-    const sessaoStr = localStorage.getItem('sgm_user');
-    const sessao = sessaoStr ? JSON.parse(sessaoStr) : null;
-    setCurrentUserRole(sessao?.cargo || 'gestor');
 
     try {
-        let query = supabase.from('funcionarios').select('*').order('nome');
+        // Nunca traz a coluna de senha/PIN para a tela
+        let query = supabase.from('funcionarios').select('id, nome, cargo, email, matricula, ativo, data_contratacao').order('nome');
         if (filtroStatus === 'arquivados') query = query.eq('ativo', false);
         else query = query.eq('ativo', true);
 
@@ -144,45 +148,79 @@ export default function TecnicosPage() {
     setModalOpen(true);
   };
 
+  const podeGerenciar = (tec: Tecnico) => souMaster || tec.cargo !== 'master';
+
   const handleOpenEdit = (tec: Tecnico) => {
+    if (!podeGerenciar(tec)) return toast.error("Somente um Master pode alterar contas Master.");
     setEditingId(tec.id);
     setFormNome(tec.nome || ""); 
     setFormEmail(tec.email || ""); 
     setFormCargo(tec.cargo || "montador");
     setFormMatricula(tec.matricula || ""); 
-    
-    if (tec.cargo === 'montador') setFormPin(tec.senha || "");
-    else setFormSenha(""); 
+    // Credenciais nunca são exibidas: em branco = manter a atual
+    setFormPin("");
+    setFormSenha(""); 
     
     setModalOpen(true);
   };
 
   const handleSalvar = async () => {
-    if (!formNome) return toast.warning("Nome obrigatório.");
-    if (!formEmail) return toast.warning("Email obrigatório.");
+    const nome = formNome.trim();
+    const email = formEmail.trim().toLowerCase();
+    const matricula = formMatricula.trim();
+    const ehMontador = formCargo === 'montador';
+
+    // --- Validações (evitam cadastros que depois não conseguem entrar no sistema) ---
+    if (!nome) return toast.warning("Nome obrigatório.");
+    if (formCargo === 'master' && !souMaster) return toast.error("Somente um Master pode criar contas Master.");
+    if (ehMontador) {
+        if (!/^\d{3,6}$/.test(matricula)) return toast.warning("A matrícula deve ter de 3 a 6 números (é digitada no teclado numérico do login).");
+        if (!editingId && !/^\d{4}$/.test(formPin)) return toast.warning("Defina um PIN de exatamente 4 números.");
+        if (editingId && formPin && !/^\d{4}$/.test(formPin)) return toast.warning("O PIN deve ter exatamente 4 números.");
+        if (email && !EMAIL_VALIDO.test(email)) return toast.warning("E-mail inválido.");
+    } else {
+        if (!EMAIL_VALIDO.test(email)) return toast.warning("Informe um e-mail válido (usado no login).");
+        if (!editingId && formSenha.length < 6) return toast.warning("Defina uma senha com pelo menos 6 caracteres.");
+        if (editingId && formSenha && formSenha.length < 6) return toast.warning("A nova senha deve ter pelo menos 6 caracteres.");
+    }
     
     setSaving(true); // Trava o botão para evitar clique duplo
 
-    const senhaFinal = formCargo === 'montador' 
-        ? (formPin || (editingId ? undefined : "1234")) 
-        : (formSenha || (editingId ? undefined : "shineray123"));
+    // Unicidade de matrícula e e-mail (o login depende deles)
+    const { data: existentes } = await supabase
+        .from('funcionarios')
+        .select('id, nome')
+        .eq(ehMontador ? 'matricula' : 'email', ehMontador ? matricula : email)
+        .limit(5);
+    const conflito = (existentes || []).find((f: { id: string }) => f.id !== editingId);
+    if (conflito) {
+        setSaving(false);
+        return toast.error(ehMontador ? `A matrícula ${matricula} já pertence a ${conflito.nome}.` : `O e-mail ${email} já pertence a ${conflito.nome}.`);
+    }
+
+    const novaCredencial = ehMontador ? formPin : formSenha;
 
     // Payload para a tabela 'funcionarios'
-    const payload: any = { 
-        nome: formNome, 
-        email: formEmail, 
+    const payload: Record<string, unknown> = { 
+        nome, 
+        email: email || null, 
         cargo: formCargo,
-        ativo: true,
-        matricula: formCargo === 'montador' ? formMatricula : null,
-        senha: senhaFinal
+        matricula: ehMontador ? matricula : null,
     };
+    if (novaCredencial) payload.senha = novaCredencial;
 
     try {
         if (editingId) {
             // EDICAO
+            const anterior = tecnicos.find(t => t.id === editingId);
             const { error } = await supabase.from('funcionarios').update(payload).eq('id', editingId);
             if(error) throw error;
-            await registrarLog("EDICAO", payload.nome, { id: editingId });
+            await registrarLog("EDICAO", nome, {
+                id: editingId,
+                cargo_anterior: anterior?.cargo,
+                cargo_novo: formCargo,
+                credencial_alterada: !!novaCredencial
+            });
             toast.success("Perfil atualizado!");
         } else {
             // CRIAÇÃO (Novo Usuário)
@@ -193,16 +231,17 @@ export default function TecnicosPage() {
             // Para simplificar e resolver o "clique sem ação", vamos focar na tabela funcionarios primeiro.
             
             payload.data_contratacao = new Date().toISOString();
+            payload.ativo = true;
             
             // Tenta inserir na tabela funcionarios
-            const { error, data } = await supabase.from('funcionarios').insert(payload).select().single();
+            const { error } = await supabase.from('funcionarios').insert(payload).select('id').single();
             
             if (error) {
                  console.error("Erro Supabase:", error);
                  throw new Error(error.message);
             }
             
-            await registrarLog("CADASTRO", payload.nome, { cargo: payload.cargo });
+            await registrarLog("CADASTRO", nome, { cargo: formCargo, matricula: ehMontador ? matricula : undefined });
             toast.success("Colaborador cadastrado!");
         }
         
@@ -216,18 +255,32 @@ export default function TecnicosPage() {
     }
   };
 
-  // ... (Resto das funções handleArquivar, handleRestaurar, getCargoInfo iguais ao original)
-  const handleArquivar = async (id: string, nome: string) => { 
-    if(!confirm(`Arquivar ${nome}?`)) return;
-    await supabase.from('funcionarios').update({ ativo: false }).eq('id', id);
-    toast.success("Arquivado."); 
-    fetchData();
+  const handleArquivar = (tec: Tecnico) => {
+    if (tec.id === usuarioLogado?.id) return toast.error("Você não pode arquivar a própria conta.");
+    if (!podeGerenciar(tec)) return toast.error("Somente um Master pode arquivar contas Master.");
+    setConfirmacao({ tipo: 'arquivar', tec });
   };
 
-  const handleRestaurar = async (id: string) => {
-    await supabase.from('funcionarios').update({ ativo: true }).eq('id', id);
-    toast.success("Restaurado."); 
-    setFiltroStatus("ativos");
+  const handleRestaurar = (tec: Tecnico) => {
+    if (!podeGerenciar(tec)) return toast.error("Somente um Master pode restaurar contas Master.");
+    setConfirmacao({ tipo: 'restaurar', tec });
+  };
+
+  const confirmarAlteracaoStatus = async () => {
+    if (!confirmacao) return;
+    const { tipo, tec } = confirmacao;
+    setAlterandoStatus(true);
+    const { error } = await supabase.from('funcionarios').update({ ativo: tipo === 'restaurar' }).eq('id', tec.id);
+    setAlterandoStatus(false);
+    if (error) {
+      toast.error("Não foi possível atualizar o colaborador.");
+      return;
+    }
+    await registrarLog(tipo === 'arquivar' ? 'ARQUIVAMENTO' : 'RESTAURACAO', tec.nome, { id: tec.id, cargo: tec.cargo });
+    toast.success(tipo === 'arquivar' ? "Arquivado. O acesso será encerrado em até 5 minutos." : "Restaurado.");
+    setConfirmacao(null);
+    if (tipo === 'restaurar') setFiltroStatus("ativos");
+    else fetchData();
   };
 
   const listaFiltrada = tecnicos.filter(t => {
@@ -476,20 +529,26 @@ export default function TecnicosPage() {
                                             </div>
                                         </div>
 
+                                        {podeGerenciar(tec) ? (
                                         <div className="flex gap-3 w-full">
                                             <Button variant="outline" className="flex-1 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800" onClick={() => handleOpenEdit(tec)}>
                                                 <Edit className="w-4 h-4 mr-2" /> Editar Acessos
                                             </Button>
                                             {tec.ativo ? (
-                                                <Button variant="ghost" size="icon" title="Arquivar Usuário" className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleArquivar(tec.id, tec.nome)}>
+                                                <Button variant="ghost" size="icon" title="Arquivar Usuário" aria-label="Arquivar usuário" className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" onClick={() => handleArquivar(tec)} disabled={tec.id === usuarioLogado?.id}>
                                                     <Archive className="w-5 h-5" />
                                                 </Button>
                                             ) : (
-                                                <Button variant="ghost" size="icon" title="Restaurar Usuário" className="text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={() => handleRestaurar(tec.id)}>
+                                                <Button variant="ghost" size="icon" title="Restaurar Usuário" aria-label="Restaurar usuário" className="text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20" onClick={() => handleRestaurar(tec)}>
                                                     <RotateCcw className="w-5 h-5" />
                                                 </Button>
                                             )}
                                         </div>
+                                        ) : (
+                                          <p className="text-xs text-slate-400 flex items-center gap-2 bg-slate-50 dark:bg-slate-900 rounded-lg p-3">
+                                            <Lock className="w-4 h-4" /> Conta Master: somente outro Master pode alterar.
+                                          </p>
+                                        )}
                                     </CardContent>
                                 </Card>
                             );
@@ -529,25 +588,25 @@ export default function TecnicosPage() {
                         </div>
                     </div>
                     <div className="space-y-2">
-                        <label className="text-sm font-bold">E-mail (Login Corporativo)</label>
-                        <Input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="joao@shineray.com" />
+                        <label className="text-sm font-bold">{formCargo === 'montador' ? 'E-mail (opcional)' : 'E-mail (Login Corporativo)'}</label>
+                        <Input type="email" value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="joao@shineray.com" />
                     </div>
 
                     {formCargo === 'montador' ? (
                         <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-100 dark:border-slate-800">
                             <div className="space-y-2">
                                 <label className="text-sm font-bold">Matrícula</label>
-                                <Input value={formMatricula} onChange={e => setFormMatricula(e.target.value)} placeholder="1001" className="font-mono" />
+                                <Input value={formMatricula} onChange={e => setFormMatricula(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" placeholder="1001" className="font-mono" />
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-bold">PIN (Senha)</label>
-                                <Input value={formPin} onChange={e => setFormPin(e.target.value)} maxLength={4} placeholder="1234" className="font-mono" />
+                                <Input type="password" value={formPin} onChange={e => setFormPin(e.target.value.replace(/\D/g, '').slice(0, 4))} inputMode="numeric" maxLength={4} placeholder={editingId ? "Manter atual" : "4 números"} className="font-mono" />
                             </div>
                         </div>
                     ) : (
                         <div className="space-y-2 bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-100 dark:border-slate-800">
                             <label className="text-sm font-bold">Senha de Acesso</label>
-                            <Input type="password" value={formSenha} onChange={e => setFormSenha(e.target.value)} placeholder={editingId ? "Manter atual" : "******"} />
+                            <Input type="password" value={formSenha} onChange={e => setFormSenha(e.target.value)} placeholder={editingId ? "Manter atual" : "Mínimo 6 caracteres"} />
                         </div>
                     )}
                 </div>
@@ -556,6 +615,27 @@ export default function TecnicosPage() {
                     <Button variant="outline" onClick={() => setModalOpen(false)} disabled={saving}>Cancelar</Button>
                     <Button onClick={handleSalvar} className="bg-blue-600 hover:bg-blue-700 text-white" disabled={saving}>
                         {saving ? "Salvando..." : "Salvar"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        {/* CONFIRMAÇÃO DE ARQUIVAMENTO / RESTAURAÇÃO */}
+        <Dialog open={!!confirmacao} onOpenChange={(o) => !o && !alterandoStatus && setConfirmacao(null)}>
+            <DialogContent className="bg-white dark:bg-slate-950">
+                <DialogHeader>
+                    <DialogTitle>{confirmacao?.tipo === 'arquivar' ? 'Arquivar colaborador' : 'Restaurar colaborador'}</DialogTitle>
+                    <DialogDescription>
+                        {confirmacao?.tipo === 'arquivar'
+                          ? `${confirmacao?.tec.nome} perderá o acesso ao sistema (sessões abertas são encerradas em até 5 minutos). O histórico de produção é mantido.`
+                          : `${confirmacao?.tec.nome} voltará a ter acesso com as credenciais atuais.`}
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={() => setConfirmacao(null)} disabled={alterandoStatus}>Cancelar</Button>
+                    <Button onClick={confirmarAlteracaoStatus} disabled={alterandoStatus} className={confirmacao?.tipo === 'arquivar' ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'}>
+                        {alterandoStatus ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                        {confirmacao?.tipo === 'arquivar' ? 'Arquivar' : 'Restaurar'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

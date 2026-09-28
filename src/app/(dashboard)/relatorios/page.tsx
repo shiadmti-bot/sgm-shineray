@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell, FunnelChart, Funnel, LabelList, ComposedChart, Line, RadialBarChart, RadialBar
+  PieChart, Pie, Cell, LabelList, ComposedChart, Line
 } from "recharts";
 import {
-  Calendar, FileSpreadsheet, CheckCircle2, TrendingUp, TrendingDown, AlertTriangle, Activity,
-  Clock, Timer, Target, Wrench, PauseCircle, Zap, Printer, ArrowUpRight, ArrowDownRight, Package, Warehouse, ArrowRight
+  Calendar, FileSpreadsheet, CheckCircle2, TrendingUp, AlertTriangle, Activity,
+  Clock, Timer, Target, Wrench, PauseCircle, Printer, ArrowUpRight, ArrowDownRight, Package, Warehouse, ArrowRight, Loader2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,8 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import ExcelJS from 'exceljs';
-import { format, subDays, differenceInMinutes, differenceInHours, startOfMonth, subMonths } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { format, subDays, differenceInMinutes, differenceInHours, startOfMonth } from "date-fns";
+import { STATUS_APROVADOS } from "@/lib/constantes";
 
 const COLORS = {
   queue: "#94a3b8", prod: "#3b82f6", analise: "#8b5cf6",
@@ -56,7 +56,7 @@ export default function RelatoriosPage() {
     totalEntrada: 0, aprovadasDireto: 0, aprovadasTotal: 0,
     taxaRetrabalho: "0", gargalo: "Fluxo Estável", gargaloNivel: "ok" as "ok"|"warn"|"crit",
     tempoMedioMontagem: 0, tempoMedioAvaria: 0, tempoMedioPatio: 0, fpy: "0",
-    deltaProducao: 0, deltaProdSinal: "up" as "up"|"down"|"same"
+    deltaProducao: 0, deltaProdSinal: "up" as "up"|"down"|"same", expedidas: 0
   });
 
   useEffect(() => { fetchDados(); }, [periodo, customStart, customEnd]);
@@ -110,7 +110,7 @@ export default function RelatoriosPage() {
       setAvariasHistorico(histAv);
       setSolicitacoesPausa(solPausa);
 
-      processarTimeline(motos, dataInicio, periodo);
+      processarTimeline(motos, dataInicio, periodo, dataFim);
       processarFunil(motos);
       processarAvarias(motos);
       processarTecnicos(motos, pausas);
@@ -132,11 +132,11 @@ export default function RelatoriosPage() {
     }
   }
 
-  function processarTimeline(motos: any[], inicio: Date, tipoPeriodo: string) {
+  function processarTimeline(motos: any[], inicio: Date, tipoPeriodo: string, fim: Date) {
     const mapa: Record<string, any> = {};
     if (tipoPeriodo !== 'hoje') {
-      let curr = new Date(inicio);
-      const end = new Date();
+      const curr = new Date(inicio);
+      const end = new Date(Math.min(fim.getTime(), Date.now()));
       while (curr <= end) {
         const key = format(curr, 'dd/MM');
         mapa[key] = { name: key, perfeitas: 0, retrabalhos: 0, avarias: 0, emAndamento: 0, total: 0 };
@@ -149,7 +149,7 @@ export default function RelatoriosPage() {
       mapa[dataKey].total++;
       if (m.status?.includes('avaria')) mapa[dataKey].avarias++;
       else if (m.rework_count > 0 || m.status === 'retrabalho_montagem' || m.tecnico_reparo) mapa[dataKey].retrabalhos++;
-      else if (['aprovado', 'estoque', 'expedido'].includes(m.status)) mapa[dataKey].perfeitas++;
+      else if (STATUS_APROVADOS.includes(m.status)) mapa[dataKey].perfeitas++;
       else mapa[dataKey].emAndamento++;
     });
     setTimelineData(Object.values(mapa));
@@ -161,7 +161,7 @@ export default function RelatoriosPage() {
       const key = format(new Date(m.created_at), 'dd/MM');
       if (!mapa[key]) mapa[key] = { total: 0, perfeitas: 0 };
       mapa[key].total++;
-      if (['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0) && !m.tecnico_reparo) mapa[key].perfeitas++;
+      if (STATUS_APROVADOS.includes(m.status) && (!m.rework_count || m.rework_count === 0) && !m.tecnico_reparo) mapa[key].perfeitas++;
     });
     setFypTimeline(Object.entries(mapa).map(([name, v]) => ({
       name, fpy: v.total > 0 ? Math.round((v.perfeitas / v.total) * 100) : 0, meta: 90
@@ -170,8 +170,8 @@ export default function RelatoriosPage() {
 
   function calcularKPIs(motos: any[], histAv: any[], prevMotos: any[], logsSaida: any[]) {
     const total = motos.length;
-    const aprovadasTotal = motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status)).length;
-    const perfeitas = motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0) && !m.tecnico_reparo).length;
+    const aprovadasTotal = motos.filter(m => STATUS_APROVADOS.includes(m.status)).length;
+    const perfeitas = motos.filter(m => STATUS_APROVADOS.includes(m.status) && (!m.rework_count || m.rework_count === 0) && !m.tecnico_reparo).length;
     const comRetrabalho = motos.filter(m => m.rework_count > 0 || m.status === 'retrabalho_montagem' || m.tecnico_reparo).length;
     const taxaRetrabalho = total > 0 ? ((comRetrabalho / total) * 100).toFixed(1) : "0";
     const fpy = total > 0 ? ((perfeitas / total) * 100).toFixed(1) : "0";
@@ -210,14 +210,14 @@ export default function RelatoriosPage() {
     if (counts.qa > 10) { gargalo = "Fila na Inspeção"; gargaloNivel = "warn"; }
     if (counts.reparo > 5) { gargalo = "Alto Índice Avarias"; gargaloNivel = "crit"; }
 
-    setKpis({ totalEntrada: total, aprovadasDireto: perfeitas, aprovadasTotal, taxaRetrabalho, gargalo, gargaloNivel, tempoMedioMontagem, tempoMedioAvaria, tempoMedioPatio, fpy, deltaProducao, deltaProdSinal });
+    setKpis({ totalEntrada: total, aprovadasDireto: perfeitas, aprovadasTotal, taxaRetrabalho, gargalo, gargaloNivel, tempoMedioMontagem, tempoMedioAvaria, tempoMedioPatio, fpy, deltaProducao, deltaProdSinal, expedidas: logsSaida.length });
   }
 
   function processarFunil(motos: any[]) {
     const t = motos.length;
     const montagem = motos.filter(m => m.status !== 'aguardando_montagem').length;
     const inspecao = motos.filter(m => m.fim_montagem).length;
-    const aprovadas = motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status)).length;
+    const aprovadas = motos.filter(m => STATUS_APROVADOS.includes(m.status)).length;
     setFunnelData([
       { name: "Entrada", value: t, fill: COLORS.queue, pct: "100%" },
       { name: "Montagem", value: montagem, fill: COLORS.prod, pct: t > 0 ? `${Math.round((montagem/t)*100)}%` : "0%" },
@@ -286,7 +286,7 @@ export default function RelatoriosPage() {
       
       stats[nome].totalInspecionado++;
       
-      if (m.status === 'aprovado' || m.status === 'estoque' || m.status === 'expedido') {
+      if (STATUS_APROVADOS.includes(m.status)) {
           stats[nome].aprovadas++;
       }
       
@@ -294,7 +294,7 @@ export default function RelatoriosPage() {
           stats[nome].reprovadas++;
       }
 
-      if (m.fim_montagem && m.updated_at && ['aprovado', 'estoque', 'retrabalho_montagem'].includes(m.status) || m.status?.startsWith('avaria_')) {
+      if (m.fim_montagem && m.updated_at && (['aprovado', 'aguardando_etiqueta', 'estoque', 'retrabalho_montagem'].includes(m.status) || m.status?.startsWith('avaria_'))) {
           // Tempo que o QA levou da fim_montagem até sua ação
           const gap = differenceInMinutes(new Date(m.updated_at), new Date(m.fim_montagem));
           if (gap > 0 && gap < 600) { // Ignora dados anômalos > 10h
@@ -335,7 +335,7 @@ export default function RelatoriosPage() {
       const mod = m.modelo || 'Desconhecido';
       if (!mapa[mod]) mapa[mod] = { name: mod, total: 0, aprovadas: 0, avarias: 0, retrabalhos: 0 };
       mapa[mod].total++;
-      if (['aprovado', 'estoque', 'expedido'].includes(m.status)) mapa[mod].aprovadas++;
+      if (STATUS_APROVADOS.includes(m.status)) mapa[mod].aprovadas++;
       if (m.status?.startsWith('avaria_')) mapa[mod].avarias++;
       if (m.rework_count > 0) mapa[mod].retrabalhos++;
     });
@@ -375,7 +375,7 @@ export default function RelatoriosPage() {
       if (totalMod > 3 && (count / totalMod) > 0.3) al.push({ tipo: 'crit', msg: `Modelo ${mod} com ${Math.round((count/totalMod)*100)}% de avarias — investigar` });
     });
 
-    const fpy = motos.length > 0 ? (motos.filter(m => ['aprovado', 'estoque', 'expedido'].includes(m.status) && (!m.rework_count || m.rework_count === 0) && !m.tecnico_reparo).length / motos.length) * 100 : 100;
+    const fpy = motos.length > 0 ? (motos.filter(m => STATUS_APROVADOS.includes(m.status) && (!m.rework_count || m.rework_count === 0) && !m.tecnico_reparo).length / motos.length) * 100 : 100;
     if (fpy >= 95) al.push({ tipo: 'ok', msg: `FPY em ${fpy.toFixed(1)}% — excelente qualidade!` });
 
     setAlertas(al);
@@ -407,7 +407,7 @@ export default function RelatoriosPage() {
     sheet2.getRow(1).font = { bold: true };
     [['Total Entrada', kpis.totalEntrada], ['Aprovadas 1ª Tentativa', kpis.aprovadasDireto], ['Total Aprovadas', kpis.aprovadasTotal],
      ['Taxa Retrabalho', `${kpis.taxaRetrabalho}%`], ['FPY', `${kpis.fpy}%`], ['Tempo Médio Montagem', `${kpis.tempoMedioMontagem} min`],
-     ['Tempo Médio Resolução Avaria', `${kpis.tempoMedioAvaria}h`], ['Status Fluxo', kpis.gargalo]
+     ['Tempo Médio Resolução Avaria', `${kpis.tempoMedioAvaria}h`], ['Expedidas no período', kpis.expedidas], ['Status Fluxo', kpis.gargalo]
     ].forEach(([ind, val]) => sheet2.addRow({ ind, val }));
 
     // Aba 3: Por Modelo
@@ -421,12 +421,14 @@ export default function RelatoriosPage() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
     a.download = `SGM_Relatorio_${format(new Date(), 'dd-MM-yyyy')}.xlsx`; a.click();
+    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     toast.success("Relatório exportado!");
   };
 
   const handlePrint = () => window.print();
 
-  const gargaloColor = kpis.gargaloNivel === 'ok' ? 'green' : kpis.gargaloNivel === 'warn' ? 'amber' : 'red';
+  // Classes completas (o Tailwind não gera classes montadas dinamicamente)
+  const gargaloBorda = kpis.gargaloNivel === 'ok' ? 'border-l-green-500' : kpis.gargaloNivel === 'warn' ? 'border-l-amber-500' : 'border-l-red-500';
 
   return (
     <RoleGuard allowedRoles={['master', 'gestor']}>
@@ -437,8 +439,9 @@ export default function RelatoriosPage() {
           <div>
             <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
                <TrendingUp className="w-8 h-8 text-blue-600" /> Relatórios de Produção
+               {loading && <Loader2 className="w-5 h-5 text-slate-400 animate-spin" aria-label="Carregando" />}
             </h1>
-            <p className="text-slate-500">Análise detalhada de volume, qualidade e eficiência.</p>
+            <p className="text-slate-500">Análise detalhada de volume, qualidade e eficiência. Aprovadas incluem as motos aguardando etiqueta.</p>
           </div>
           <div className="flex flex-wrap gap-2 items-end">
             <Select value={periodo} onValueChange={setPeriodo}>
@@ -526,7 +529,7 @@ export default function RelatoriosPage() {
             </CardContent>
           </Card>
 
-          <Card className={`border-l-4 border-l-${gargaloColor}-500 bg-white dark:bg-slate-950 shadow-sm`}>
+          <Card className={`border-l-4 ${gargaloBorda} bg-white dark:bg-slate-950 shadow-sm`}>
             <CardContent className="p-5">
               <div className="flex justify-between items-start">
                 <div>
@@ -585,6 +588,7 @@ export default function RelatoriosPage() {
                 <div>
                   <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Tempo de Pátio</p>
                   <p className="text-3xl font-black text-indigo-600 mt-1">{kpis.tempoMedioPatio}<span className="text-lg">h</span></p>
+                  <p className="text-xs text-slate-400 mt-1">{kpis.expedidas} expedida(s) no período</p>
                 </div>
                 <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600"><Warehouse className="w-5 h-5"/></div>
               </div>
@@ -847,7 +851,7 @@ export default function RelatoriosPage() {
               <Card className="border-l-4 border-l-orange-500 bg-white dark:bg-slate-950">
                 <CardContent className="p-5">
                   <p className="text-slate-500 text-xs font-bold uppercase">Solicitações Rejeitadas</p>
-                  <p className="text-3xl font-black text-orange-600 mt-1">{solicitacoesPausa.filter((s: any) => s.status === 'rejeitada').length}</p>
+                  <p className="text-3xl font-black text-orange-600 mt-1">{solicitacoesPausa.filter((s: any) => s.status === 'rejeitado' || s.status === 'rejeitada').length}</p>
                   <p className="text-xs text-slate-400 mt-1">de {solicitacoesPausa.length} solicitações</p>
                 </CardContent>
               </Card>

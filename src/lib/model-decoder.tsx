@@ -2,7 +2,9 @@
 
 // Mapeamento extraído do arquivo motos_import.csv
 // A chave é o VDS (caracteres da posição 3 a 8 do chassi)
-const VDS_MAP: Record<string, string> = {
+// Novos códigos podem ser cadastrados sem deploy em Configurações > Modelos (VDS);
+// eles são passados em `extras` e têm prioridade sobre esta tabela.
+export const VDS_MAP: Record<string, string> = {
   // Novos Modelos 2026
   NJ1125: "JET 125 2026",
   SHF195: "SHI 175 EFI 2026",
@@ -64,7 +66,14 @@ const VDS_MAP: Record<string, string> = {
 
 export const MODELOS_CADASTRADOS = Array.from(new Set(Object.values(VDS_MAP))).sort();
 
-export function identificarModelo(codigo: string): string {
+export type ExtrasVDS = { vds: string; modelo: string }[];
+
+/** Catálogo completo de modelos (tabela fixa + modelos cadastrados em Configurações). */
+export function listarModelos(extras: ExtrasVDS = []): string[] {
+  return Array.from(new Set([...Object.values(VDS_MAP), ...extras.map((e) => e.modelo)])).sort();
+}
+
+export function identificarModelo(codigo: string, extras: ExtrasVDS = []): string {
   if (!codigo || codigo.length < 9) return "Modelo Desconhecido";
 
   // Tenta identificar pelo padrão VDS (Shineray começa com 99H...)
@@ -82,6 +91,9 @@ export function identificarModelo(codigo: string): string {
     vds = upperCode.substring(0, 6);
   }
 
+  const extra = extras.find((e) => e.vds.toUpperCase() === vds);
+  if (extra) return extra.modelo;
+
   if (VDS_MAP[vds]) {
     return VDS_MAP[vds];
   }
@@ -95,7 +107,6 @@ function decodificarGenerico(vds: string): string | null {
 
   // Padrões Comuns Shineray
   const prefixo = vds.substring(0, 3); // Ex: SH, JT, PH
-  const sufixo = vds.substring(3); // Ex: F175, S050, E3K1
 
   let familia = "";
   if (prefixo.startsWith("SH")) familia = "SHI";

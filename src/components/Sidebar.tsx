@@ -1,28 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "next-themes";
-import { useState, useEffect } from "react";
 import { 
   LayoutDashboard, ScanBarcode, Wrench, ClipboardCheck, 
   Warehouse, LogOut, Moon, Sun, Users,
-  ShieldAlert, BarChart3, ChevronRight, Printer, AlertOctagon, Tag
+  ShieldAlert, BarChart3, ChevronRight, AlertOctagon, Tag, SlidersHorizontal
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-
-// Interface compatível com o Login
-interface UserData {
-  id: string;
-  nome: string;
-  cargo: string;
-  email?: string;
-  matricula?: string;
-}
+import { ROTULO_CARGO, useHidratado, useUsuarioLogado } from "@/lib/auth";
+import { efetuarLogout } from "@/lib/logout";
 
 // 1. Definição Estratégica de Menus V2.2 (Fluxo Completo)
 const menuItems = [
@@ -84,23 +76,22 @@ const menuItems = [
     href: "/auditoria", 
     icon: ShieldAlert, 
     label: "Auditoria", 
-    roles: ["master"] 
+    roles: ["gestor", "master"] 
+  },
+  { 
+    href: "/configuracoes", 
+    icon: SlidersHorizontal, 
+    label: "Configurações", 
+    roles: ["gestor", "master"] 
   },
 ];
 
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
-  const { setTheme, theme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  const [userData, setUserData] = useState<UserData | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-    const storedUser = localStorage.getItem("sgm_user");
-    if (storedUser) {
-      setUserData(JSON.parse(storedUser));
-    }
-  }, []);
+  const router = useRouter();
+  const { setTheme, resolvedTheme: theme } = useTheme();
+  const mounted = useHidratado();
+  const userData = useUsuarioLogado();
 
   const filteredMenu = menuItems.filter(item => 
     userData ? item.roles.includes(userData.cargo) : false
@@ -135,7 +126,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                   "bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700" 
                 )}
             >
-                {userData.cargo}
+                {ROTULO_CARGO[userData.cargo] || userData.cargo}
             </motion.div>
             )}
         </AnimatePresence>
@@ -145,7 +136,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       <nav className="flex-1 px-4 space-y-2 overflow-y-auto py-2 scrollbar-hide">
         {mounted ? (
           filteredMenu.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`);
             const Icon = item.icon;
             
             return (
@@ -195,7 +186,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
         {mounted && userData && (
             <div className="mb-4 flex items-center gap-3 p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:shadow-md">
                 <Avatar className="h-10 w-10 border-2 border-slate-100 dark:border-slate-800">
-                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${userData.nome}`} />
+                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userData.nome)}`} />
                     <AvatarFallback className="bg-slate-200 dark:bg-slate-800">{userData.nome.substring(0,2).toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 overflow-hidden">
@@ -210,10 +201,10 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
                     variant="ghost" 
                     size="icon"
                     className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                    onClick={() => {
-                        localStorage.removeItem('sgm_user');
-                        localStorage.removeItem('sgm_remember_email');
-                        window.location.href = "/login";
+                    onClick={async () => {
+                        onClose?.();
+                        await efetuarLogout();
+                        router.push("/login");
                     }}
                     title="Sair"
                 >
