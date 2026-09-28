@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { User, Wrench, ArrowRight, Delete, Loader2, ChevronLeft, Lock, Eye, EyeOff, Check } from "lucide-react";
+import { User, Wrench, ArrowRight, Delete, Loader2, ChevronLeft, Lock, Eye, EyeOff, Check, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { registrarLog } from "@/lib/logger";
+import { rotaInicialDoCargo, salvarSessao, useUsuarioLogado, ROTULO_CARGO } from "@/lib/auth";
 
 // Tipagem para segurança do código
 interface Funcionario {
@@ -19,9 +20,13 @@ interface Funcionario {
   cargo: string;
   matricula: string;
   email?: string;
-  senha?: string;
   ativo: boolean;
 }
+
+// A senha nunca é baixada para o navegador: a conferência é feita no filtro da consulta.
+const CAMPOS_FUNCIONARIO = 'id, nome, cargo, matricula, email, ativo';
+const MAX_TENTATIVAS = 5;
+const BLOQUEIO_MS = 30_000;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -41,6 +46,31 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [lembrar, setLembrar] = useState(false);
 
+  // Proteção contra tentativa e erro (PIN de 4 dígitos)
+  const [falhas, setFalhas] = useState(0);
+  const [bloqueadoAte, setBloqueadoAte] = useState(0);
+  const sessaoAtiva = useUsuarioLogado();
+
+  const verificarBloqueio = () => {
+    if (Date.now() < bloqueadoAte) {
+      const segundos = Math.ceil((bloqueadoAte - Date.now()) / 1000);
+      toast.error(`Muitas tentativas. Aguarde ${segundos}s.`);
+      return true;
+    }
+    return false;
+  };
+
+  const registrarFalha = (identificador: string, metodo: string) => {
+    const total = falhas + 1;
+    setFalhas(total);
+    registrarLog('LOGIN_FALHA', 'Sistema', { identificador, metodo, tentativa: total });
+    if (total >= MAX_TENTATIVAS) {
+      setBloqueadoAte(Date.now() + BLOQUEIO_MS);
+      setFalhas(0);
+      toast.error("Acesso bloqueado por 30 segundos após várias tentativas.");
+    }
+  };
+
   useEffect(() => {
     const salvo = localStorage.getItem("sgm_remember_email");
     if (salvo) {
@@ -51,7 +81,7 @@ export default function LoginPage() {
 
   // --- HELPER: Ponte de Autenticação (Shadow User) ---
   const autenticarNoSupabase = async (emailFake: string, senhaFake: string, dadosUsuario: Funcionario) => {
-    let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email: emailFake,
       password: senhaFake,
     });
@@ -79,12 +109,13 @@ export default function LoginPage() {
   // --- LOGIN MECÂNICO ---
   // Envolto em useCallback para ser usado dentro do useEffect
   const loginMecanico = useCallback(async (pinFinal: string) => {
+    if (verificarBloqueio()) { setPin(""); return; }
     setLoading(true);
     
     try {
         const { data: funcRaw, error } = await supabase
           .from('funcionarios')
-          .select('*')
+          .select(CAMPOS_FUNCIONARIO)
           .eq('matricula', matricula)
           .eq('senha', pinFinal)
           .eq('cargo', 'montador')
@@ -93,10 +124,14 @@ export default function LoginPage() {
 
         if (error) {
             console.error("Erro SQL:", error);
-            throw new Error("Erro de conexão.");
+            // PGRST116 = mais de um cadastro com a mesma matrícula/PIN.
+            throw new Error(error.code === 'PGRST116' ? "Matrícula duplicada no cadastro. Procure o gestor." : "Erro de conexão.");
         }
 
-        if (!funcRaw) throw new Error("Matrícula ou PIN incorretos.");
+        if (!funcRaw) {
+            registrarFalha(matricula, 'PIN');
+            throw new Error("Matrícula ou PIN incorretos.");
+        }
 
         const func = funcRaw as Funcionario;
 
@@ -105,61 +140,73 @@ export default function LoginPage() {
         await autenticarNoSupabase(emailSystem, senhaSystem, func);
 
         toast.success(`Turno iniciado: ${func.nome}`);
-        localStorage.setItem('sgm_user', JSON.stringify(func));
+        salvarSessao({ ...func });
+        setFalhas(0);
         await registrarLog('LOGIN', 'Sistema', { metodo: 'PIN', cargo: 'montador' });
         
         router.push("/montagem"); 
 
-    } catch (err: any) {
-        console.error(err);
-        toast.error(err.message || "Erro ao entrar.");
+    } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erro ao entrar.");
         setPin("");
     } finally {
         setLoading(false);
     }
-  }, [matricula, router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matricula, router, falhas, bloqueadoAte]);
 
   // --- LOGIN GESTOR ---
   const loginGestor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if(!email || !senha) return toast.warning("Preencha todos os campos.");
+    const identificador = email.trim();
+    if(!identificador || !senha) return toast.warning("Preencha todos os campos.");
+    if (verificarBloqueio()) return;
     setLoading(true);
 
     try {
-        const { data: funcRaw, error } = await supabase
+        // Duas consultas com .eq() (valores escapados pelo cliente) em vez de montar um filtro
+        // .or() com texto digitado — que permitia injetar condições na consulta.
+        const buscarPor = (coluna: 'email' | 'matricula') => supabase
           .from('funcionarios')
-          .select('*')
-          .or(`email.eq.${email},matricula.eq.${email}`)
+          .select(CAMPOS_FUNCIONARIO)
+          .eq(coluna, identificador)
+          .eq('senha', senha)
           .in('cargo', ['master', 'gestor', 'supervisor'])
           .eq('ativo', true)
-          .maybeSingle();
+          .limit(1);
+
+        let { data, error } = await buscarPor('email');
+        if (!error && (!data || data.length === 0)) {
+            ({ data, error } = await buscarPor('matricula'));
+        }
 
         if (error) {
              console.error("Erro Login Gestor:", error);
              throw new Error("Erro técnico ao buscar usuário.");
         }
 
-        if (!funcRaw) throw new Error("Usuário não encontrado.");
-        
-        const func = funcRaw as Funcionario;
-
-        if (func.senha !== senha) throw new Error("Senha incorreta.");
+        const func = data?.[0] as Funcionario | undefined;
+        if (!func) {
+            registrarFalha(identificador, 'Senha');
+            // Mensagem única: não revela se o usuário existe.
+            throw new Error("Usuário ou senha inválidos.");
+        }
 
         const emailAuth = func.email && func.email.includes('@') ? func.email : `${func.matricula}@shineray.sys`;
         await autenticarNoSupabase(emailAuth, senha, func);
 
-        if (lembrar) localStorage.setItem("sgm_remember_email", email);
+        if (lembrar) localStorage.setItem("sgm_remember_email", identificador);
         else localStorage.removeItem("sgm_remember_email");
 
         toast.success(`Bem-vindo, ${func.nome.split(' ')[0]}`);
-        localStorage.setItem('sgm_user', JSON.stringify(func));
+        salvarSessao({ ...func });
+        setFalhas(0);
         await registrarLog('LOGIN', 'Sistema', { metodo: 'Senha', cargo: func.cargo });
         
-        if (func.cargo === 'supervisor') router.push("/qualidade");
-        else router.push("/dashboard"); 
+        router.push(rotaInicialDoCargo(func.cargo));
 
-    } catch (err: any) {
-        toast.error(err.message || "Erro de login.");
+    } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erro de login.");
     } finally {
         setLoading(false);
     }
@@ -307,6 +354,22 @@ export default function LoginPage() {
                     <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Bem-vindo</h2>
                     <p className="text-slate-500">Escolha seu perfil de acesso para continuar.</p>
                 </div>
+                {sessaoAtiva && (
+                    <button
+                        type="button"
+                        onClick={() => router.push(rotaInicialDoCargo(sessaoAtiva.cargo))}
+                        className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/30 hover:border-green-500 transition-all text-left"
+                    >
+                        <div className="p-3 rounded-xl bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400">
+                            <LogIn className="w-6 h-6" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">Continuar como {sessaoAtiva.nome}</p>
+                            <p className="text-xs text-slate-500">{ROTULO_CARGO[sessaoAtiva.cargo] || sessaoAtiva.cargo} · sessão ativa neste dispositivo</p>
+                        </div>
+                        <ArrowRight className="w-5 h-5 text-green-600" />
+                    </button>
+                )}
                 <div className="grid gap-5">
                     <button type="button" onClick={() => setPerfil("gestor")} className="group relative flex items-center p-6 bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 rounded-2xl hover:border-blue-500 dark:hover:border-blue-500 transition-all duration-300 text-left hover:shadow-xl hover:shadow-blue-500/10 active:scale-[0.98]">
                         <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl mr-5 group-hover:scale-110 transition-transform duration-300">

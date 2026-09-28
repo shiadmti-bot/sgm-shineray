@@ -1,21 +1,25 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { 
   ClipboardCheck, CheckCircle2, User, RotateCcw, 
-  Wrench, PaintBucket, Armchair, Clock, Calendar, Timer, AlertCircle, AlertTriangle
+  Wrench, PaintBucket, Armchair, Clock, Calendar, Timer, AlertTriangle, Loader2, Hourglass
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { registrarLog } from "@/lib/logger";
+import { getUsuarioLogado } from "@/lib/auth";
+import { useConfigGeral } from "@/lib/config-sistema";
+import { TIPOS_AVARIA, getHexColor as corHex } from "@/lib/constantes";
+import { formatarDuracaoMin, minutosDesde } from "@/lib/datas";
 
 // Helper para calcular duração
 const calcularDuracao = (inicio: string, fim: string) => {
@@ -27,29 +31,14 @@ const calcularDuracao = (inicio: string, fim: string) => {
     return `${diffMins} min`;
 };
 
-const getHexColor = (colorName: string) => {
-    if (!colorName) return '#94a3b8';
-    const lower = colorName.toLowerCase();
-    if (lower.includes('preta fosca')) return '#27272a';
-    if (lower.includes('preta')) return '#000000';
-    if (lower.includes('branca')) return '#ffffff';
-    if (lower.includes('vermelha fosca')) return '#991b1b';
-    if (lower.includes('vermelha')) return '#ef4444';
-    if (lower.includes('azul fosco')) return '#1e3a8a';
-    if (lower.includes('azul')) return '#3b82f6';
-    if (lower.includes('amarela')) return '#eab308';
-    if (lower.includes('verde')) return '#22c55e';
-    if (lower.includes('bege')) return '#d6d3d1';
-    if (lower.includes('prata')) return '#cbd5e1';
-    if (lower.includes('nardo') || lower.includes('cinza')) return '#64748b';
-    if (lower.includes('marrom')) return '#78350f';
-    if (lower.includes('laranja')) return '#f97316';
-    return '#94a3b8';
-};
 
 export default function QualidadePage() {
+  const { config } = useConfigGeral();
+  const getHexColor = (nome: string) => corHex(nome, [config.coresCarenagem, config.coresBanco]);
   const [loading, setLoading] = useState(true);
   const [listaAnalise, setListaAnalise] = useState<any[]>([]);
+  const [salvandoDecisao, setSalvandoDecisao] = useState(false);
+  const [, setRelogio] = useState(0);
   
   // Modais de Decisão
   const [modalDecisaoOpen, setModalDecisaoOpen] = useState(false);
@@ -63,24 +52,27 @@ export default function QualidadePage() {
   const [declaracaoQA, setDeclaracaoQA] = useState(false);
   const [aprovandoAcao, setAprovandoAcao] = useState(false);
 
-  useEffect(() => {
-    fetchMotos();
-    const interval = setInterval(fetchMotos, 5000); // Polling rápido
-    return () => clearInterval(interval);
-  }, []);
-
-  async function fetchMotos() {
-    setLoading(true);
+  // Atualização silenciosa: o esqueleto de carregamento aparece só na primeira carga
+  // (antes, a lista "piscava" a cada 5 segundos).
+  const fetchMotos = useCallback(async () => {
     // Busca apenas o que está aguardando inspeção
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('motos')
       .select(`*, montador:funcionarios!motos_montador_id_fkey(nome)`)
       .eq('status', 'em_analise')
       .order('fim_montagem', { ascending: true }); // FIFO (Primeira que entra é a primeira a ser inspecionada)
 
-    if (data) setListaAnalise(data);
+    if (error) console.error(error);
+    else if (data) setListaAnalise(data);
     setLoading(false);
-  }
+  }, []);
+
+  useEffect(() => {
+    fetchMotos();
+    const interval = setInterval(fetchMotos, 5000); // Polling rápido
+    const relogio = setInterval(() => setRelogio(r => r + 1), 60000);
+    return () => { clearInterval(interval); clearInterval(relogio); };
+  }, [fetchMotos]);
 
   // --- AÇÃO 1: APROVAR (Manda para Etiquetagem) ---
   const handleAprovar = async (moto: any) => {
@@ -94,20 +86,29 @@ export default function QualidadePage() {
     if (!declaracaoQA) return toast.warning("Confirme a declaração de qualidade.");
 
     setAprovandoAcao(true);
-    const user = JSON.parse(localStorage.getItem('sgm_user') || '{}');
+    const user = getUsuarioLogado();
 
     try {
-      const { error } = await supabase.from('motos').update({
+      const { data, error } = await supabase.from('motos').update({
           status: 'aguardando_etiqueta', 
           localizacao: 'Pátio Montada (Aguardando Etiqueta)',
-          supervisor_id: user.id,
+          supervisor_id: user?.id,
           updated_at: new Date().toISOString()
-      }).eq('id', motoAprovando.id);
+      })
+      .eq('id', motoAprovando.id)
+      .eq('status', 'em_analise') // outra estação pode ter decidido antes
+      .select('id');
 
       if (error) throw error;
+      if (!data || data.length === 0) {
+        toast.warning("Esta moto já foi inspecionada por outra pessoa.");
+        setMotoAprovando(null);
+        fetchMotos();
+        return;
+      }
 
       toast.success("Aprovada! Enviada para Etiquetagem.");
-      await registrarLog('APROVACAO_QA', motoAprovando.sku, { supervisor: user.nome });
+      await registrarLog('APROVACAO_QA', motoAprovando.sku, { supervisor: user?.nome, retrabalhos: motoAprovando.rework_count || 0, reparada: !!motoAprovando.tecnico_reparo });
       setMotoAprovando(null);
       fetchMotos();
     } catch (err: any) {
@@ -128,45 +129,74 @@ export default function QualidadePage() {
   };
 
   const confirmarDecisaoQA = async () => {
-    const user = JSON.parse(localStorage.getItem('sgm_user') || '{}');
-    if (!observacaoQA) return toast.warning("Observação obrigatória");
+    const user = getUsuarioLogado();
+    const descricao = observacaoQA.trim();
+    if (!descricao) return toast.warning("Observação obrigatória");
+    if (acaoDecisao === 'avaria' && !tipoAvaria) return toast.warning("Selecione o defeito.");
+    if (salvandoDecisao) return;
+    setSalvandoDecisao(true);
 
-    let payload: any = { supervisor_id: user.id, updated_at: new Date().toISOString() };
+    const payload: Record<string, unknown> = { supervisor_id: user?.id, updated_at: new Date().toISOString() };
 
     if (acaoDecisao === 'retrabalho') {
         // Devolve para a linha (Montador vê card vermelho)
         payload.status = 'retrabalho_montagem';
-        payload.observacoes = `RETRABALHO: ${observacaoQA}`;
+        payload.observacoes = `RETRABALHO: ${descricao}`;
         payload.localizacao = motoSelecionada.montador ? `Box ${motoSelecionada.montador.nome.split(' ')[0]}` : 'Linha de Montagem';
         payload.rework_count = (motoSelecionada.rework_count || 0) + 1;
-        await registrarLog('RETRABALHO_QA', motoSelecionada.sku, { motivo: observacaoQA });
     } else {
-        // Manda para Pátio de Avarias (Página nova)
-        if (!tipoAvaria) return toast.warning("Selecione o defeito.");
+        // Manda para Pátio de Avarias
         payload.status = tipoAvaria; 
-        payload.detalhes_avaria = observacaoQA;
+        payload.detalhes_avaria = descricao;
         payload.localizacao = 'Pátio de Avarias'; 
-        
-        // Cria Histórico
-        await supabase.from('historico_avarias').insert({
-            moto_id: motoSelecionada.id,
-            sku: motoSelecionada.sku,
-            modelo: motoSelecionada.modelo,
-            cor: motoSelecionada.cor,
-            cor_banco: motoSelecionada.cor_banco,
-            tipo_avaria: tipoAvaria,
-            descricao_problema: observacaoQA,
-            supervisor_id: user.id,
-            status_ticket: 'pendente',
-            data_reporte: new Date().toISOString()
-        });
-        await registrarLog('REPROVACAO_QA', motoSelecionada.sku, { motivo: observacaoQA, tipo: tipoAvaria });
     }
 
-    await supabase.from('motos').update(payload).eq('id', motoSelecionada.id);
-    toast.success(acaoDecisao === 'retrabalho' ? "Devolvida para Montador" : "Segregada para Pátio de Avarias");
-    setModalDecisaoOpen(false);
-    fetchMotos();
+    try {
+        // 1. Atualiza a moto (somente se ainda estiver em inspeção)
+        const { data, error } = await supabase.from('motos').update(payload)
+          .eq('id', motoSelecionada.id)
+          .eq('status', 'em_analise')
+          .select('id');
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            toast.warning("Esta moto já foi inspecionada por outra pessoa.");
+            setModalDecisaoOpen(false);
+            fetchMotos();
+            return;
+        }
+
+        // 2. Histórico e auditoria
+        if (acaoDecisao === 'retrabalho') {
+            await registrarLog('RETRABALHO_QA', motoSelecionada.sku, { motivo: descricao, tentativa: payload.rework_count });
+        } else {
+            const { error: erroHistorico } = await supabase.from('historico_avarias').insert({
+                moto_id: motoSelecionada.id,
+                sku: motoSelecionada.sku,
+                modelo: motoSelecionada.modelo,
+                cor: motoSelecionada.cor,
+                cor_banco: motoSelecionada.cor_banco,
+                tipo_avaria: tipoAvaria,
+                descricao_problema: descricao,
+                supervisor_id: user?.id,
+                status_ticket: 'pendente',
+                data_reporte: new Date().toISOString()
+            });
+            if (erroHistorico) {
+                console.error(erroHistorico);
+                toast.warning("Moto segregada, mas o histórico de avaria não foi gravado.");
+            }
+            await registrarLog('REPROVACAO_QA', motoSelecionada.sku, { motivo: descricao, tipo: tipoAvaria });
+        }
+
+        toast.success(acaoDecisao === 'retrabalho' ? "Devolvida para Montador" : "Segregada para Pátio de Avarias");
+        setModalDecisaoOpen(false);
+        fetchMotos();
+    } catch (err) {
+        console.error(err);
+        toast.error("Erro ao registrar a decisão. Tente novamente.");
+    } finally {
+        setSalvandoDecisao(false);
+    }
   };
 
   const totalFila = listaAnalise.length;
@@ -187,11 +217,11 @@ export default function QualidadePage() {
       <div className="space-y-6 animate-in fade-in pb-20">
         
         {/* Banner com Gradiente e Infos */}
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-850 dark:from-purple-950 dark:to-indigo-950 text-white p-6 rounded-2xl relative overflow-hidden shadow-lg border border-purple-500/10">
+        <div className="bg-gradient-to-r from-purple-600 to-indigo-800 dark:from-purple-950 dark:to-indigo-950 text-white p-6 rounded-2xl relative overflow-hidden shadow-lg border border-purple-500/10">
           <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:16px_16px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
           <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10">
             <div>
-              <span className="text-[10px] bg-purple-550/30 text-purple-100 border border-purple-400/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+              <span className="text-[10px] bg-purple-500/30 text-purple-100 border border-purple-400/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
                    Controle de Qualidade
               </span>
               <h1 className="text-3xl font-black mt-1.5 flex items-center gap-2">
@@ -238,7 +268,7 @@ export default function QualidadePage() {
                         <p className="text-xs font-black text-slate-400 uppercase tracking-wider">Reinspeções (Urgente)</p>
                         <p className={`text-3xl font-black mt-1.5 ${totalRetorno > 0 ? 'text-amber-600' : 'text-slate-900 dark:text-white'}`}>{totalRetorno}</p>
                     </div>
-                    <div className={`p-3 rounded-xl group-hover:scale-110 transition-transform ${totalRetorno > 0 ? 'bg-amber-500/10 text-amber-650' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-550'}`}>
+                    <div className={`p-3 rounded-xl group-hover:scale-110 transition-transform ${totalRetorno > 0 ? 'bg-amber-500/10 text-amber-600' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>
                         <RotateCcw className="w-6 h-6"/>
                     </div>
                 </CardContent>
@@ -256,7 +286,7 @@ export default function QualidadePage() {
             {!loading && listaAnalise.length === 0 && (
                 <div className="text-center py-24 text-slate-400 border-2 border-dashed rounded-2xl bg-slate-50 dark:bg-slate-900/30 border-slate-200 dark:border-slate-800">
                     <CheckCircle2 className="w-16 h-16 mx-auto mb-4 text-green-500/60 animate-bounce"/>
-                    <h2 className="text-xl font-black text-slate-705 dark:text-slate-300">Fila Limpa!</h2>
+                    <h2 className="text-xl font-black text-slate-700 dark:text-slate-300">Fila Limpa!</h2>
                     <p className="text-sm text-slate-500 mt-1">Nenhum veículo aguardando inspeção de qualidade no momento.</p>
                 </div>
             )}
@@ -292,6 +322,14 @@ export default function QualidadePage() {
                                     <h3 className="font-black text-2xl text-slate-900 dark:text-white mt-2.5">{moto.modelo}</h3>
                                 </div>
                                 <div className="text-left sm:text-right">
+                                    {(() => {
+                                        const espera = minutosDesde(moto.fim_montagem);
+                                        return (
+                                            <div className={`text-[11px] font-bold flex items-center gap-1 sm:justify-end mb-1 ${espera >= 30 ? 'text-red-600' : espera >= 15 ? 'text-amber-600' : 'text-slate-400'}`}>
+                                                <Hourglass className="w-3 h-3"/> Aguardando inspeção há {formatarDuracaoMin(espera)}
+                                            </div>
+                                        );
+                                    })()}
                                     <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Finalizado na Montagem</div>
                                     <div className="text-sm font-bold flex items-center gap-2 justify-start sm:justify-end text-slate-700 dark:text-slate-300 mt-1">
                                         <Calendar className="w-4 h-4 text-slate-400"/> {new Date(moto.fim_montagem).toLocaleDateString()}
@@ -306,7 +344,7 @@ export default function QualidadePage() {
                                 <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-6">
                                     <div className="space-y-1">
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                             <PaintBucket className="w-3.5 h-3.5 text-slate-450"/> Carenagem
+                                             <PaintBucket className="w-3.5 h-3.5 text-slate-400"/> Carenagem
                                         </p>
                                         <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
                                             <div className="w-4 h-4 rounded-full border border-slate-300 shadow-sm shrink-0" style={{backgroundColor: getHexColor(moto.cor)}}></div>
@@ -315,7 +353,7 @@ export default function QualidadePage() {
                                     </div>
                                     <div className="space-y-1">
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                             <Armchair className="w-3.5 h-3.5 text-slate-450"/> Banco
+                                             <Armchair className="w-3.5 h-3.5 text-slate-400"/> Banco
                                         </p>
                                         <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
                                             <span className="font-bold text-sm text-slate-700 dark:text-slate-200 capitalize">{moto.cor_banco || 'N/A'}</span>
@@ -323,7 +361,7 @@ export default function QualidadePage() {
                                     </div>
                                     <div className="space-y-1">
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                             <User className="w-3.5 h-3.5 text-slate-450"/> Montador
+                                             <User className="w-3.5 h-3.5 text-slate-400"/> Montador
                                         </p>
                                         <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 truncate">
                                             <span className="font-bold text-sm text-slate-700 dark:text-slate-200">{moto.montador?.nome.split(' ')[0] || 'Desc.'}</span>
@@ -331,7 +369,7 @@ export default function QualidadePage() {
                                     </div>
                                     <div className="space-y-1">
                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                             <Timer className="w-3.5 h-3.5 text-slate-450"/> Tempo Montagem
+                                             <Timer className="w-3.5 h-3.5 text-slate-400"/> Tempo Montagem
                                         </p>
                                         <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
                                             <span className="font-mono text-sm font-bold text-slate-700 dark:text-slate-200">
@@ -369,7 +407,7 @@ export default function QualidadePage() {
                                                         <p className="font-black uppercase tracking-wider text-blue-700 dark:text-blue-400">Pátio: Oficina</p>
                                                         <p className="text-slate-600 dark:text-slate-400 mt-0.5">Consertado por: <strong className="font-bold text-slate-800 dark:text-slate-200">{moto.tecnico_reparo}</strong></p>
                                                         <p className="italic opacity-80 mt-1 pl-2 border-l-2 border-blue-200 dark:border-blue-800 leading-normal">
-                                                            "{moto.observacoes?.split('):').pop()?.trim() || 'Avaria solucionada.'}"
+                                                            &quot;{moto.observacoes?.split('):').pop()?.trim() || 'Avaria solucionada.'}&quot;
                                                         </p>
                                                     </div>
                                                 </div>
@@ -387,7 +425,7 @@ export default function QualidadePage() {
                                         <CheckCircle2 className="w-6 h-6 mr-2"/> APROVAR
                                     </Button>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <Button variant="outline" size="sm" className="h-10 text-amber-600 border-amber-250 hover:bg-amber-50 dark:border-amber-900/40 dark:hover:bg-amber-955/20 font-bold rounded-xl" onClick={() => abrirModalQA(moto, 'retrabalho')}>
+                                        <Button variant="outline" size="sm" className="h-10 text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-900/40 dark:hover:bg-amber-950/20 font-bold rounded-xl" onClick={() => abrirModalQA(moto, 'retrabalho')}>
                                             Retrabalho
                                         </Button>
                                         <Button variant="destructive" size="sm" className="h-10 shadow-lg shadow-red-600/10 font-bold rounded-xl" onClick={() => abrirModalQA(moto, 'avaria')}>
@@ -403,7 +441,7 @@ export default function QualidadePage() {
         </div>
 
         {/* MODAL DECISÃO QA */}
-        <Dialog open={modalDecisaoOpen} onOpenChange={setModalDecisaoOpen}>
+        <Dialog open={modalDecisaoOpen} onOpenChange={(o) => !salvandoDecisao && setModalDecisaoOpen(o)}>
             <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 max-w-md rounded-2xl shadow-2xl">
                 <DialogHeader>
                     <DialogTitle className={`text-xl font-black flex items-center gap-2 ${acaoDecisao === 'retrabalho' ? 'text-amber-600' : 'text-red-600'}`}>
@@ -421,35 +459,34 @@ export default function QualidadePage() {
                         <div className="space-y-2">
                             <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tipo de Falha</label>
                             <Select onValueChange={setTipoAvaria} value={tipoAvaria}>
-                                <SelectTrigger className="h-11 bg-slate-550 dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione o tipo..."/></SelectTrigger>
+                                <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione o tipo..."/></SelectTrigger>
                                 <SelectContent>
-                                     <SelectItem value="avaria_mecanica">🔧 Mecânica / Motor</SelectItem>
-                                     <SelectItem value="avaria_pintura">🎨 Pintura / Carenagem</SelectItem>
-                                     <SelectItem value="avaria_estrutura">🏗️ Estrutura / Chassi</SelectItem>
-                                     <SelectItem value="avaria_pecas">⚙️ Peças Faltantes</SelectItem>
+                                     {TIPOS_AVARIA.map(t => <SelectItem key={t.valor} value={t.valor}>{t.emoji} {t.rotulo}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
                     )}
                     <div className="space-y-2">
                         <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Descrição do Defeito</label>
-                        <Input 
+                        <Textarea 
                             placeholder={acaoDecisao === 'retrabalho' ? "O que o montador precisa corrigir?" : "Detalhe o problema mecânico/visual encontrado..."} 
                             value={observacaoQA} 
                             onChange={e => setObservacaoQA(e.target.value)} 
-                            className="h-11 bg-slate-550 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                            rows={3}
+                            maxLength={500}
+                            className="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
                         />
                     </div>
                 </div>
                 
                 <DialogFooter className="gap-2 sm:gap-0 mt-2">
-                    <Button variant="ghost" onClick={() => setModalDecisaoOpen(false)} className="h-11 font-bold">Cancelar</Button>
+                    <Button variant="ghost" onClick={() => setModalDecisaoOpen(false)} className="h-11 font-bold" disabled={salvandoDecisao}>Cancelar</Button>
                     <Button 
                          onClick={confirmarDecisaoQA} 
-                         disabled={!observacaoQA || (acaoDecisao === 'avaria' && !tipoAvaria)}
+                         disabled={!observacaoQA.trim() || (acaoDecisao === 'avaria' && !tipoAvaria) || salvandoDecisao}
                          className={`h-11 font-bold ${acaoDecisao === 'retrabalho' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-600/20' : 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/20'}`}
                     >
-                        Confirmar Reprovação
+                        {salvandoDecisao ? <><Loader2 className="w-4 h-4 mr-2 animate-spin"/> Salvando...</> : acaoDecisao === 'retrabalho' ? 'Devolver para Montador' : 'Confirmar Reprovação'}
                     </Button>
                 </DialogFooter>
             </DialogContent>

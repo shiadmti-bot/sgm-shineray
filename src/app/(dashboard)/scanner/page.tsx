@@ -5,14 +5,17 @@ import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { useZxing } from "react-zxing";
 import { 
-  ScanBarcode, ArrowRight, CheckCircle2, Loader2, Camera, XCircle, Hash, PackagePlus, Box 
+  ScanBarcode, ArrowRight, CheckCircle2, Loader2, Camera, XCircle, Hash, PackagePlus, Box, History, AlertTriangle
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-import { identificarModelo, MODELOS_CADASTRADOS } from "@/lib/model-decoder"; // Importando a nova inteligência
+import { identificarModelo, listarModelos } from "@/lib/model-decoder"; // Importando a nova inteligência
+import { registrarLog } from "@/lib/logger";
+import { tocarSom } from "@/lib/sons";
+import { useConfigGeral } from "@/lib/config-sistema";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -35,7 +38,19 @@ const extrairMetadadosVIN = (vin: string) => {
   return { ano, fabrica };
 };
 
+interface Leitura {
+  chassi: string;
+  modelo: string;
+  hora: string;
+  ok: boolean;
+  mensagem: string;
+}
+
 export default function ScannerPage() {
+  const { config } = useConfigGeral();
+  const MODELOS_CADASTRADOS = listarModelos(config.modelosExtras);
+  const [leituras, setLeituras] = useState<Leitura[]>([]);
+  const ultimaLeituraCamera = useRef<{ codigo: string; em: number }>({ codigo: "", em: 0 });
   const [loading, setLoading] = useState(false);
   const [codigo, setCodigo] = useState("");
   const [ultimoRegistro, setUltimoRegistro] = useState<any>(null);
@@ -55,9 +70,13 @@ export default function ScannerPage() {
     paused: !cameraAtiva,
     onResult(result) {
       const lido = result.getText();
+      // A câmera costuma entregar a mesma leitura várias vezes seguidas
+      const agora = Date.now();
+      if (ultimaLeituraCamera.current.codigo === lido && agora - ultimaLeituraCamera.current.em < 3000) return;
+      ultimaLeituraCamera.current = { codigo: lido, em: agora };
       setCodigo(lido);
       setCameraAtiva(false);
-      processarChassi(lido);
+      processarChassi(lido, 'camera');
     },
     onError() { 
         // Silently ignore errors during scanning frames
@@ -69,11 +88,17 @@ export default function ScannerPage() {
     if (!cameraAtiva) inputRef.current?.focus();
   }, [cameraAtiva, loading, ultimoRegistro]);
 
-  const processarChassi = async (chassiLido: string) => {
-    const chassi = chassiLido.toUpperCase().trim();
+  const registrarLeitura = (chassi: string, modelo: string, ok: boolean, mensagem: string) => {
+    const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLeituras(prev => [{ chassi, modelo, hora, ok, mensagem }, ...prev].slice(0, 8));
+  };
+
+  const processarChassi = async (chassiLido: string, origem: 'camera' | 'manual' = 'manual') => {
+    const chassi = chassiLido.toUpperCase().replace(/\s+/g, '').trim();
 
     // Validação de Vin (Chassis) - Deve ter 17 caracteres
     if (chassi.length !== 17) {
+        tocarSom('erro');
         if (chassi.length > 5 && chassi.length < 15) {
              toast.error("Isso parece um MOTOR!", { description: "Por favor, escaneie o código do CHASSI (17 dígitos)." });
         } else {
@@ -82,12 +107,23 @@ export default function ScannerPage() {
         return;
     }
 
+    // Símbolos indicam leitura errada (chassi só tem letras e números)
+    if (!/^[A-Z0-9]{17}$/.test(chassi)) {
+        tocarSom('erro');
+        toast.error("Leitura inválida", { description: "O chassi contém símbolos. Limpe a etiqueta e bipe novamente." });
+        setCodigo("");
+        return;
+    }
+    if (/[IOQ]/.test(chassi)) {
+        toast.warning("Confira o chassi", { description: "Chassis padrão não usam as letras I, O ou Q (podem ser 1 ou 0)." });
+    }
+
     setLoading(true);
     setUltimoRegistro(null);
 
     try {
       // 1. Decodificação Inteligente (Novo Model Decoder)
-      const modeloIdentificado = identificarModelo(chassi);
+      const modeloIdentificado = identificarModelo(chassi, config.modelosExtras);
       const metadados = extrairMetadadosVIN(chassi);
 
       // 2. Verifica Duplicidade no Supabase
@@ -98,9 +134,11 @@ export default function ScannerPage() {
         .maybeSingle();
 
       if (existente) {
+        tocarSom('erro');
         toast.error(`Moto já registrada!`, {
             description: `Modelo: ${existente.modelo} | Status: ${existente.status.toUpperCase()}`
         });
+        registrarLeitura(chassi, existente.modelo, false, 'Já registrada');
         setLoading(false);
         setCodigo("");
         return;
@@ -114,12 +152,13 @@ export default function ScannerPage() {
         setUsarCustomModelo(false);
         setCustomModelo("");
         setModalModeloDesconhecidoOpen(true);
+        tocarSom('alerta');
         setLoading(false);
         setCodigo("");
         return;
       }
 
-      await registrarMotoNoBanco(chassi, modeloIdentificado, metadados);
+      await registrarMotoNoBanco(chassi, modeloIdentificado, { ...metadados, origem });
 
     } catch (err: any) {
       console.error("Erro scanner:", err);
@@ -147,7 +186,19 @@ export default function ScannerPage() {
         .select()
         .single();
 
-      if (erroInsert) throw erroInsert;
+      if (erroInsert) {
+        // 23505 = chassi já cadastrado (leitura simultânea em outra estação)
+        if (erroInsert.code === '23505') {
+          tocarSom('erro');
+          toast.error("Moto já registrada!", { description: "Este chassi acabou de ser cadastrado por outra estação." });
+          registrarLeitura(chassi, modelo, false, 'Já registrada');
+          return;
+        }
+        throw erroInsert;
+      }
+
+      await registrarLog('ENTRADA_ESTOQUE', chassi, { modelo, ano: metadados.ano, fabrica: metadados.fabrica, origem: metadados.origem || 'manual' });
+      registrarLeitura(chassi, modelo, true, 'Adicionada à fila');
 
       // 4. Feedback Visual
       setUltimoRegistro({
@@ -162,12 +213,13 @@ export default function ScannerPage() {
         description: `${modelo} enviada para montagem.`
       });
 
-      // Efeito Sonoro (Opcional)
-      const audio = new Audio('/beep.mp3'); 
-      audio.play().catch(() => {});
+      // Efeito Sonoro
+      tocarSom('sucesso');
 
     } catch (err: any) {
       console.error("Erro insert:", err);
+      tocarSom('erro');
+      registrarLeitura(chassi, modelo, false, 'Erro ao registrar');
       toast.error("Erro ao registrar entrada."); 
     } finally {
       setLoading(false);
@@ -258,6 +310,27 @@ export default function ScannerPage() {
                 </form>
               </CardContent>
             </Card>
+
+            {/* Leituras desta sessão */}
+            {leituras.length > 0 && (
+              <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm">
+                <CardContent className="p-4">
+                  <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-3">
+                    <History className="w-3 h-3" /> Últimas leituras ({leituras.filter(l => l.ok).length} registradas)
+                  </p>
+                  <ul className="space-y-1.5">
+                    {leituras.map((l, i) => (
+                      <li key={`${l.chassi}-${i}`} className="flex items-center gap-2 text-xs">
+                        {l.ok ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+                        <span className="font-mono text-slate-700 dark:text-slate-300">{l.chassi}</span>
+                        <span className="text-slate-400 truncate flex-1">{l.modelo} · {l.mensagem}</span>
+                        <span className="text-slate-400 font-mono shrink-0">{l.hora}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* DIREITA: FEEDBACK DO REGISTRO */}
@@ -401,7 +474,7 @@ export default function ScannerPage() {
                 </div>
 
                 <DialogFooter>
-                    <Button variant="ghost" onClick={() => setModalModeloDesconhecidoOpen(false)}>Cancelar</Button>
+                    <Button variant="ghost" onClick={() => { setModalModeloDesconhecidoOpen(false); registrarLeitura(chassiPendente, 'Modelo desconhecido', false, 'Cancelada'); }}>Cancelar</Button>
                     <Button 
                          onClick={async () => {
                               const mod = usarCustomModelo ? customModelo.toUpperCase().trim() : modeloSelecionado;

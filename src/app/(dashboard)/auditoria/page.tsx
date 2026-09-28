@@ -1,23 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
-import { 
-  ShieldAlert, Search, FileJson, User, 
-  Filter, Download, AlertTriangle, CheckCircle2, Info, PlusCircle, Trash2, Edit,
-  Wrench, ScanBarcode, LogIn, LogOut, Printer, Calendar
+import {
+  ShieldAlert, Search, FileJson, Filter, Download, AlertTriangle, CheckCircle2, Info, PlusCircle, Trash2, Edit,
+  Wrench, ScanBarcode, LogIn, LogOut, Printer, Calendar, Loader2, Settings, Archive, KeyRound, ShieldX, Truck, Undo2, Play
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { format, subDays } from "date-fns";
+import { lerDetalhesLog } from "@/lib/logger";
+import { dataInputParaISO } from "@/lib/datas";
 
 // Tipo alinhado com o banco atual
 type LogSistema = {
@@ -25,100 +26,176 @@ type LogSistema = {
   acao: string;
   usuario: string; // Nome direto (snapshot)
   referencia: string; // SKU ou ID
-  detalhes: any; // JSONB
+  detalhes: unknown; // JSONB ou texto JSON
   created_at: string;
 };
 
+type LogProcessado = LogSistema & { dados: Record<string, unknown> };
+
+const TAMANHO_PAGINA = 200;
+
+// Filtros disponíveis (valor: filtro aplicado no banco)
+const GRUPOS_FILTRO: { grupo: string; itens: { valor: string; rotulo: string }[] }[] = [
+  { grupo: "Acesso", itens: [
+    { valor: "LOGIN", rotulo: "Logins" },
+    { valor: "LOGIN_FALHA", rotulo: "Tentativas de login falhas" },
+    { valor: "LOGOUT", rotulo: "Saídas do sistema" },
+  ]},
+  { grupo: "Produção", itens: [
+    { valor: "ENTRADA_ESTOQUE", rotulo: "Entradas (scanner)" },
+    { valor: "INICIO_MONTAGEM", rotulo: "Início de montagem" },
+    { valor: "PRODUCAO_FIM", rotulo: "Fim de montagem" },
+    { valor: "PAUSA", rotulo: "Pausas de linha" },
+  ]},
+  { grupo: "Qualidade", itens: [
+    { valor: "QA", rotulo: "Qualidade e reparos" },
+  ]},
+  { grupo: "Logística", itens: [
+    { valor: "ETIQUETA", rotulo: "Impressões de etiqueta" },
+    { valor: "REVERSAO_ESTOQUE", rotulo: "Reversões de estoque" },
+    { valor: "SAIDA_ESTOQUE", rotulo: "Saídas de estoque" },
+  ]},
+  { grupo: "Administração", itens: [
+    { valor: "CADASTRO", rotulo: "Cadastros" },
+    { valor: "EDICAO", rotulo: "Edições" },
+    { valor: "EXCLUSAO", rotulo: "Exclusões" },
+    { valor: "EQUIPE", rotulo: "Arquivamento / restauração" },
+    { valor: "SENHA_ALTERADA", rotulo: "Troca de senha" },
+    { valor: "CONFIGURACAO", rotulo: "Configurações do sistema" },
+  ]},
+];
+
+const CHAVES_OCULTAS = new Set(["_meta", "autor_id_ref", "autor_cargo"]);
+
+function resumoDetalhes(dados: Record<string, unknown>): string {
+  return Object.entries(dados)
+    .filter(([k, v]) => !CHAVES_OCULTAS.has(k) && v !== null && v !== undefined && v !== "")
+    .slice(0, 3)
+    .map(([k, v]) => `${k.replace(/_/g, " ")}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+    .join(" · ");
+}
+
 export default function AuditoriaPage() {
   const [loading, setLoading] = useState(true);
-  const [logs, setLogs] = useState<LogSistema[]>([]);
+  const [carregandoMais, setCarregandoMais] = useState(false);
+  const [temMais, setTemMais] = useState(false);
+  const [logs, setLogs] = useState<LogProcessado[]>([]);
   const [busca, setBusca] = useState("");
   const [filtroAcao, setFiltroAcao] = useState("todos");
-  
+  const [filtroUsuario, setFiltroUsuario] = useState("todos");
+  const [logDetalhe, setLogDetalhe] = useState<LogProcessado | null>(null);
+
   // NOVOS FILTROS DE DATA
   const [dataInicio, setDataInicio] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd')); // Padrão: 7 dias atrás
   const [dataFim, setDataFim] = useState(format(new Date(), 'yyyy-MM-dd')); // Padrão: Hoje
 
-  useEffect(() => {
-    fetchLogs();
-  }, [filtroAcao, dataInicio, dataFim]); // Reage às datas
-
-  async function fetchLogs() {
-    setLoading(true);
-    
+  const buscarPagina = useCallback(async (offset: number) => {
     // Início da query base
     let query = supabase
       .from('logs_sistema')
       .select('*')
       .order('created_at', { ascending: false });
 
-    // Filtro de Datas (Range)
-    // Adiciona o horário 00:00:00 e 23:59:59 para cobrir o dia inteiro
-    query = query
-        .gte('created_at', `${dataInicio}T00:00:00`)
-        .lte('created_at', `${dataFim}T23:59:59`);
+    // Filtro de Datas no fuso local (antes o filtro era aplicado em UTC e cortava 3h do dia)
+    if (dataInicio) query = query.gte('created_at', dataInputParaISO(dataInicio));
+    if (dataFim) query = query.lte('created_at', dataInputParaISO(dataFim, true));
 
     // Filtro de Tipo de Ação
-    if (filtroAcao !== 'todos') {
-        if (filtroAcao === 'PAUSA') query = query.ilike('acao', '%PAUSA%');
-        else if (filtroAcao === 'QA') query = query.or('acao.ilike.%QA%,acao.ilike.%REPARO%'); // QA ou Reparo
-        else query = query.eq('acao', filtroAcao);
+    if (filtroAcao === 'PAUSA') query = query.ilike('acao', '%PAUSA%');
+    else if (filtroAcao === 'QA') query = query.or('acao.ilike.%QA%,acao.ilike.%REPARO%'); // QA ou Reparo
+    else if (filtroAcao === 'ETIQUETA') query = query.ilike('acao', '%ETIQUETA%');
+    else if (filtroAcao === 'EQUIPE') query = query.in('acao', ['ARQUIVAMENTO', 'RESTAURACAO']);
+    else if (filtroAcao !== 'todos') query = query.eq('acao', filtroAcao);
+
+    const { data, error } = await query.range(offset, offset + TAMANHO_PAGINA - 1);
+    if (error) throw error;
+    const lista = (data || []) as LogSistema[];
+    return { lista: lista.map((l) => ({ ...l, dados: lerDetalhesLog(l.detalhes) })), temMais: lista.length === TAMANHO_PAGINA };
+  }, [filtroAcao, dataInicio, dataFim]);
+
+  useEffect(() => {
+    let ativo = true;
+    buscarPagina(0)
+      .then((r) => {
+        if (!ativo) return;
+        setLogs(r.lista);
+        setTemMais(r.temMais);
+      })
+      .catch((error) => {
+        console.error(error);
+        if (ativo) toast.error("Erro ao carregar auditoria.");
+      })
+      .finally(() => { if (ativo) setLoading(false); });
+    return () => { ativo = false; };
+  }, [buscarPagina]); // Reage às datas e ao tipo
+
+  const carregarMais = async () => {
+    setCarregandoMais(true);
+    try {
+      const r = await buscarPagina(logs.length);
+      setLogs((prev) => [...prev, ...r.lista]);
+      setTemMais(r.temMais);
+    } catch {
+      toast.error("Erro ao carregar mais registros.");
+    } finally {
+      setCarregandoMais(false);
     }
+  };
 
-    // Limite de segurança para não explodir a memória
-    query = query.limit(200);
-
-    const { data, error } = await query;
-
-    if (error) {
-      toast.error("Erro ao carregar auditoria.");
-      console.error(error);
-    } else {
-      setLogs(data as LogSistema[]);
-    }
-    setLoading(false);
-  }
-
-  const logsFiltrados = logs.filter(log => 
-    log.usuario?.toLowerCase().includes(busca.toLowerCase()) ||
-    log.referencia?.toLowerCase().includes(busca.toLowerCase()) ||
-    log.acao.toLowerCase().includes(busca.toLowerCase()) ||
-    JSON.stringify(log.detalhes).toLowerCase().includes(busca.toLowerCase())
+  const usuarios = Array.from(new Set(logs.map((l) => l.usuario).filter(Boolean))).sort();
+  const termo = busca.toLowerCase();
+  const logsFiltrados = logs.filter(log =>
+    (filtroUsuario === 'todos' || log.usuario === filtroUsuario) && (
+      !termo ||
+      log.usuario?.toLowerCase().includes(termo) ||
+      log.referencia?.toLowerCase().includes(termo) ||
+      log.acao.toLowerCase().includes(termo) ||
+      JSON.stringify(log.dados).toLowerCase().includes(termo)
+    )
   );
 
   // Helper Visual Expandido
   const getActionStyle = (acao: string) => {
+      if (acao === 'LOGIN_FALHA') return { icon: ShieldX, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
       if (acao.includes('LOGIN')) return { icon: LogIn, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/30' };
       if (acao.includes('LOGOUT')) return { icon: LogOut, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-800' };
-      
+      if (acao === 'CONFIGURACAO') return { icon: Settings, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-200 dark:bg-slate-800' };
+      if (acao === 'SENHA_ALTERADA') return { icon: KeyRound, color: 'text-violet-600', bg: 'bg-violet-100 dark:bg-violet-900/30' };
+      if (acao === 'ARQUIVAMENTO' || acao === 'RESTAURACAO') return { icon: Archive, color: 'text-amber-700', bg: 'bg-amber-100 dark:bg-amber-900/30' };
+      if (acao === 'REVERSAO_ESTOQUE') return { icon: Undo2, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' };
+      if (acao === 'SAIDA_ESTOQUE') return { icon: Truck, color: 'text-emerald-700', bg: 'bg-emerald-100 dark:bg-emerald-900/30' };
+      if (acao === 'INICIO_MONTAGEM') return { icon: Play, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/30' };
+
       if (acao.includes('CADASTRO') || acao.includes('ENTRADA')) return { icon: PlusCircle, color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900/30' };
       if (acao.includes('EDICAO')) return { icon: Edit, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' };
-      if (acao.includes('EXCLUSAO') || acao.includes('SAIDA')) return { icon: Trash2, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
-      
+      if (acao.includes('EXCLUSAO')) return { icon: Trash2, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
+
       if (acao.includes('PAUSA')) return { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-900/30' };
-      
-      if (acao === 'APROVACAO_QA') return { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' };
+
+      if (acao === 'APROVACAO_QA' || acao === 'PRODUCAO_FIM') return { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' };
       if (acao.includes('REPROVACAO') || acao.includes('RETRABALHO')) return { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
       if (acao.includes('REPARO')) return { icon: Wrench, color: 'text-indigo-600', bg: 'bg-indigo-100 dark:bg-indigo-900/30' };
-      if (acao === 'IMPRESSAO_ETIQUETA') return { icon: Printer, color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' };
+      if (acao.includes('ETIQUETA')) return { icon: Printer, color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' };
 
       return { icon: Info, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-800' };
   };
 
+  // CSV com ";" e BOM: abre com acentos e colunas corretas no Excel em português
   const handleExportCSV = () => {
     if (logsFiltrados.length === 0) return toast.warning("Nada para exportar");
-    
-    const headers = ["Data", "Hora", "Usuário", "Ação", "Referência (SKU)", "Detalhes"];
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const headers = ["Data", "Hora", "Usuário", "Ação", "Referência (SKU)", "Resumo", "Detalhes"];
     const rows = logsFiltrados.map(log => [
-        new Date(log.created_at).toLocaleDateString(),
-        new Date(log.created_at).toLocaleTimeString(),
+        new Date(log.created_at).toLocaleDateString('pt-BR'),
+        new Date(log.created_at).toLocaleTimeString('pt-BR'),
         log.usuario,
         log.acao,
         log.referencia || '-',
-        JSON.stringify(log.detalhes).replace(/"/g, '""') // Escapa aspas para CSV
-    ]);
+        resumoDetalhes(log.dados),
+        JSON.stringify(log.dados),
+    ].map(esc).join(';'));
 
-    const csvContent = [headers.join(","), ...rows.map(e => `"${e.join('","')}"`)].join("\n"); // Adiciona aspas em tudo
+    const csvContent = '﻿' + [headers.map(esc).join(';'), ...rows].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -126,12 +203,16 @@ export default function AuditoriaPage() {
     link.setAttribute("download", `auditoria_shineray_${dataInicio}_a_${dataFim}.csv`);
     document.body.appendChild(link);
     link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+
+  const meta = (logDetalhe?.dados?._meta || {}) as Record<string, unknown>;
 
   return (
     <RoleGuard allowedRoles={['master', 'gestor']}>
       <div className="space-y-6 animate-in fade-in pb-20">
-        
+
         {/* Cabeçalho */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -147,56 +228,69 @@ export default function AuditoriaPage() {
 
         {/* Filtros Completos */}
         <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col xl:flex-row gap-4 shadow-sm">
-           
+
            {/* Busca Textual */}
            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input 
-                placeholder="Buscar por usuário, SKU ou detalhe..." 
+              <Input
+                placeholder="Buscar por usuário, SKU ou detalhe..."
                 className="pl-10 h-10"
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
               />
            </div>
-           
+
            {/* Filtro de Tipo */}
-           <Select value={filtroAcao} onValueChange={setFiltroAcao}>
-              <SelectTrigger className="w-full md:w-[200px] h-10">
+           <Select value={filtroAcao} onValueChange={(v) => { setLoading(true); setFiltroAcao(v); }}>
+              <SelectTrigger className="w-full xl:w-[230px] h-10">
                  <div className="flex items-center">
                     <Filter className="w-4 h-4 mr-2 text-slate-500" />
                     <SelectValue placeholder="Tipo de Ação" />
                  </div>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[360px]">
                  <SelectItem value="todos">Todos Eventos</SelectItem>
-                 <SelectItem value="LOGIN">Acessos (Login)</SelectItem>
-                 <SelectItem value="PAUSA">Pausas de Linha</SelectItem>
-                 <SelectItem value="QA">Qualidade e Reparo</SelectItem>
-                 <SelectItem value="IMPRESSAO_ETIQUETA">Impressões</SelectItem>
-                 <SelectItem value="EXCLUSAO">Exclusões</SelectItem>
-                 <SelectItem value="SAIDA_ESTOQUE">Saídas de Estoque</SelectItem>
+                 {GRUPOS_FILTRO.map(g => (
+                   <SelectGroup key={g.grupo}>
+                     <SelectLabel>{g.grupo}</SelectLabel>
+                     {g.itens.map(i => <SelectItem key={i.valor} value={i.valor}>{i.rotulo}</SelectItem>)}
+                   </SelectGroup>
+                 ))}
+              </SelectContent>
+           </Select>
+
+           {/* Filtro de Usuário */}
+           <Select value={filtroUsuario} onValueChange={setFiltroUsuario}>
+              <SelectTrigger className="w-full xl:w-[200px] h-10">
+                 <SelectValue placeholder="Usuário" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[360px]">
+                 <SelectItem value="todos">Todos os usuários</SelectItem>
+                 {usuarios.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
               </SelectContent>
            </Select>
 
            {/* Filtro de Datas */}
-           <div className="flex items-center gap-2 w-full md:w-auto">
-               <div className="relative">
+           <div className="flex items-center gap-2 w-full xl:w-auto">
+               <div className="relative flex-1">
                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                   <input 
-                       type="date" 
-                       className="pl-9 h-10 w-full md:w-[140px] rounded-md border border-slate-200 dark:border-slate-800 bg-transparent text-sm"
+                   <input
+                       type="date"
+                       className="pl-9 h-10 w-full xl:w-[150px] rounded-md border border-slate-200 dark:border-slate-800 bg-transparent text-sm"
                        value={dataInicio}
-                       onChange={(e) => setDataInicio(e.target.value)}
+                       max={dataFim}
+                       onChange={(e) => { setLoading(true); setDataInicio(e.target.value); }}
                    />
                </div>
                <span className="text-slate-400">até</span>
-               <div className="relative">
+               <div className="relative flex-1">
                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                   <input 
-                       type="date" 
-                       className="pl-9 h-10 w-full md:w-[140px] rounded-md border border-slate-200 dark:border-slate-800 bg-transparent text-sm"
+                   <input
+                       type="date"
+                       className="pl-9 h-10 w-full xl:w-[150px] rounded-md border border-slate-200 dark:border-slate-800 bg-transparent text-sm"
                        value={dataFim}
-                       onChange={(e) => setDataFim(e.target.value)}
+                       min={dataInicio}
+                       onChange={(e) => { setLoading(true); setDataFim(e.target.value); }}
                    />
                </div>
            </div>
@@ -205,9 +299,9 @@ export default function AuditoriaPage() {
         {/* Tabela de Logs */}
         <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
            <CardHeader className="py-4 border-b border-slate-100 dark:border-slate-800">
-               <div className="flex justify-between items-center">
+               <div className="flex justify-between items-center gap-2">
                    <CardTitle className="text-base">Registros Encontrados</CardTitle>
-                   <Badge variant="secondary">{logsFiltrados.length} eventos</Badge>
+                   <Badge variant="secondary">{logsFiltrados.length} eventos{temMais ? ' (há mais)' : ''}</Badge>
                </div>
            </CardHeader>
            <CardContent className="p-0">
@@ -216,7 +310,7 @@ export default function AuditoriaPage() {
                        {[1,2,3,4].map(i => <Skeleton key={i} className="h-12 w-full" />)}
                    </div>
                ) : (
-                   <div className="rounded-md">
+                   <div className="rounded-md overflow-x-auto">
                        <Table>
                            <TableHeader className="bg-slate-50 dark:bg-slate-900/50">
                                <TableRow>
@@ -238,17 +332,21 @@ export default function AuditoriaPage() {
                                    logsFiltrados.map((log) => {
                                        const style = getActionStyle(log.acao);
                                        const Icon = style.icon;
-                                       
+                                       const resumo = resumoDetalhes(log.dados);
+
                                        return (
                                            <TableRow key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 group transition-colors">
-                                               <TableCell>
+                                               <TableCell className="max-w-[360px]">
                                                    <div className="flex items-center gap-3">
-                                                       <div className={`p-2 rounded-lg ${style.bg} ${style.color}`}>
+                                                       <div className={`p-2 rounded-lg shrink-0 ${style.bg} ${style.color}`}>
                                                            <Icon className="w-4 h-4" />
                                                        </div>
-                                                       <span className="font-bold text-xs uppercase tracking-wide text-slate-700 dark:text-slate-300">
-                                                           {log.acao.replace(/_/g, ' ')}
-                                                       </span>
+                                                       <div className="min-w-0">
+                                                           <span className="font-bold text-xs uppercase tracking-wide text-slate-700 dark:text-slate-300">
+                                                               {log.acao.replace(/_/g, ' ')}
+                                                           </span>
+                                                           {resumo && <p className="text-[11px] text-slate-400 truncate" title={resumo}>{resumo}</p>}
+                                                       </div>
                                                    </div>
                                                </TableCell>
                                                <TableCell>
@@ -274,42 +372,9 @@ export default function AuditoriaPage() {
                                                    </div>
                                                </TableCell>
                                                <TableCell className="text-right">
-                                                   <Dialog>
-                                                       <DialogTrigger asChild>
-                                                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-50 group-hover:opacity-100 transition-opacity">
-                                                               <FileJson className="w-4 h-4 text-slate-400 hover:text-blue-500" />
-                                                           </Button>
-                                                       </DialogTrigger>
-                                                       <DialogContent className="max-w-xl bg-white dark:bg-slate-900 border-slate-200">
-                                                           <DialogHeader>
-                                                               <DialogTitle className="flex items-center gap-2">
-                                                                   <ShieldAlert className="w-5 h-5 text-red-500" /> Detalhes da Auditoria
-                                                               </DialogTitle>
-                                                           </DialogHeader>
-                                                           
-                                                           <div className="space-y-4">
-                                                               <div className="grid grid-cols-2 gap-4 text-sm">
-                                                                   <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
-                                                                       <p className="text-xs font-bold uppercase text-slate-500">ID do Evento</p>
-                                                                       <p className="font-mono text-xs mt-1">{log.id}</p>
-                                                                   </div>
-                                                                   <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
-                                                                       <p className="text-xs font-bold uppercase text-slate-500">Dispositivo (User Agent)</p>
-                                                                       <p className="truncate text-xs mt-1" title={log.detalhes?._meta?.userAgent}>
-                                                                           {log.detalhes?._meta?.userAgent || 'Não identificado'}
-                                                                       </p>
-                                                                   </div>
-                                                               </div>
-
-                                                               <div>
-                                                                   <p className="text-xs font-bold uppercase text-slate-500 mb-2">Payload Completo (JSON)</p>
-                                                                   <div className="bg-slate-950 text-emerald-400 p-4 rounded-lg font-mono text-[10px] overflow-auto max-h-[300px] border border-slate-800 shadow-inner">
-                                                                       <pre>{JSON.stringify(log.detalhes, null, 2)}</pre>
-                                                                   </div>
-                                                               </div>
-                                                           </div>
-                                                       </DialogContent>
-                                                   </Dialog>
+                                                   <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-60 group-hover:opacity-100 transition-opacity" onClick={() => setLogDetalhe(log)} aria-label="Ver detalhes">
+                                                       <FileJson className="w-4 h-4 text-slate-400 hover:text-blue-500" />
+                                                   </Button>
                                                </TableCell>
                                            </TableRow>
                                        );
@@ -317,10 +382,57 @@ export default function AuditoriaPage() {
                                )}
                            </TableBody>
                        </Table>
+                       {temMais && (
+                         <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+                           <Button variant="outline" onClick={carregarMais} disabled={carregandoMais}>
+                             {carregandoMais ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null} Carregar mais {TAMANHO_PAGINA}
+                           </Button>
+                         </div>
+                       )}
                    </div>
                )}
            </CardContent>
         </Card>
+
+        {/* Detalhe do evento */}
+        <Dialog open={!!logDetalhe} onOpenChange={(o) => !o && setLogDetalhe(null)}>
+            <DialogContent className="sm:max-w-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <ShieldAlert className="w-5 h-5 text-red-500" /> Detalhes da Auditoria
+                    </DialogTitle>
+                    <DialogDescription>{logDetalhe?.acao.replace(/_/g, ' ')} · {logDetalhe?.usuario}</DialogDescription>
+                </DialogHeader>
+
+                {logDetalhe && (
+                  <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                              <p className="text-xs font-bold uppercase text-slate-500">ID do Evento</p>
+                              <p className="font-mono text-xs mt-1 break-all">{logDetalhe.id}</p>
+                          </div>
+                          <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                              <p className="text-xs font-bold uppercase text-slate-500">Tela de origem</p>
+                              <p className="font-mono text-xs mt-1">{String(meta.url_origem || '—')}</p>
+                          </div>
+                          <div className="col-span-2 p-3 bg-slate-50 dark:bg-slate-800 rounded border border-slate-100 dark:border-slate-700">
+                              <p className="text-xs font-bold uppercase text-slate-500">Dispositivo (User Agent)</p>
+                              <p className="text-xs mt-1 break-words">
+                                  {String(meta.userAgent || 'Não identificado')}
+                              </p>
+                          </div>
+                      </div>
+
+                      <div>
+                          <p className="text-xs font-bold uppercase text-slate-500 mb-2">Payload Completo (JSON)</p>
+                          <div className="bg-slate-950 text-emerald-400 p-4 rounded-lg font-mono text-[10px] overflow-auto max-h-[300px] border border-slate-800 shadow-inner">
+                              <pre>{JSON.stringify(logDetalhe.dados, null, 2)}</pre>
+                          </div>
+                      </div>
+                  </div>
+                )}
+            </DialogContent>
+        </Dialog>
       </div>
     </RoleGuard>
   );

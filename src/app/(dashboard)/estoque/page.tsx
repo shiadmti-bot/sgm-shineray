@@ -1,44 +1,37 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/RoleGuard";
 import { 
-  Warehouse, Search, Filter, Truck, CheckCircle2, FileJson, Calendar, User, PaintBucket, Tag, AlertCircle, Wrench, RotateCcw, Pencil
+  Warehouse, Search, Truck, CheckCircle2, FileJson, Calendar, User, PaintBucket, Tag, AlertCircle, Wrench, RotateCcw, Pencil, Printer, Download, Loader2, RefreshCw
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { registrarLog } from "@/lib/logger";
-import { MODELOS_CADASTRADOS } from "@/lib/model-decoder";
-
-const getHexColor = (colorName: string) => {
-    if (!colorName) return '#94a3b8';
-    const lower = colorName.toLowerCase();
-    if (lower.includes('preta fosca')) return '#27272a';
-    if (lower.includes('preta')) return '#000000';
-    if (lower.includes('branca')) return '#ffffff';
-    if (lower.includes('vermelha fosca')) return '#991b1b';
-    if (lower.includes('vermelha')) return '#ef4444';
-    if (lower.includes('azul fosco')) return '#1e3a8a';
-    if (lower.includes('azul')) return '#3b82f6';
-    if (lower.includes('amarela')) return '#eab308';
-    if (lower.includes('verde')) return '#22c55e';
-    if (lower.includes('bege')) return '#d6d3d1';
-    if (lower.includes('prata')) return '#cbd5e1';
-    if (lower.includes('nardo') || lower.includes('cinza')) return '#64748b';
-    if (lower.includes('marrom')) return '#78350f';
-    if (lower.includes('laranja')) return '#f97316';
-    return '#94a3b8';
-};
+import { listarModelos } from "@/lib/model-decoder";
+import { getHexColor as corHex } from "@/lib/constantes";
+import { useConfigGeral } from "@/lib/config-sistema";
+import { minutosDesde } from "@/lib/datas";
+import { carregarConfigEtiquetas, modeloPadrao } from "@/lib/etiquetas/armazenamento";
+import { renderizarEtiquetas } from "@/lib/etiquetas/render";
+import { imprimirHTML } from "@/lib/etiquetas/imprimir";
 
 export default function EstoquePage() {
+  const { config: configGeral } = useConfigGeral();
+  const MODELOS_CADASTRADOS = listarModelos(configGeral.modelosExtras);
+  const getHexColor = (nome: string) => corHex(nome, [configGeral.coresCarenagem, configGeral.coresBanco]);
+
   const [motos, setMotos] = useState<any[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [expedindo, setExpedindo] = useState(false);
+  const [reimprimindo, setReimprimindo] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtroModelo, setFiltroModelo] = useState("todos");
   const [filtroCor, setFiltroCor] = useState("todas");
@@ -62,12 +55,8 @@ export default function EstoquePage() {
   const [salvandoEdit, setSalvandoEdit] = useState(false);
   const [revertendo, setRevertendo] = useState(false);
 
-  useEffect(() => {
-    fetchEstoque();
-  }, []);
-
-  async function fetchEstoque() {
-    const { data } = await supabase
+  const fetchEstoque = useCallback(async () => {
+    const { data, error } = await supabase
       .from('motos')
       .select(`
         *,
@@ -77,23 +66,62 @@ export default function EstoquePage() {
       .eq('status', 'estoque')
       .order('updated_at', { ascending: false });
     
-    if (data) setMotos(data);
-  }
+    if (error) toast.error("Erro ao carregar o estoque.");
+    else if (data) setMotos(data);
+    setCarregando(false);
+  }, []);
+
+  useEffect(() => {
+    fetchEstoque();
+    const interval = setInterval(fetchEstoque, 30000);
+    return () => clearInterval(interval);
+  }, [fetchEstoque]);
 
   const handleDarBaixa = async () => {
-    if (!motoSaida) return;
+    if (!motoSaida || expedindo) return;
+    setExpedindo(true);
 
-    const { error } = await supabase.from('motos').update({
+    const { data, error } = await supabase.from('motos').update({
         status: 'expedido',
         localizacao: 'Expedido / Vendido',
         updated_at: new Date().toISOString()
-    }).eq('id', motoSaida.id);
+    })
+    .eq('id', motoSaida.id)
+    .eq('status', 'estoque') // evita expedir duas vezes
+    .select('id');
 
-    if (!error) {
-        toast.success("Saída registrada!");
-        await registrarLog('SAIDA_ESTOQUE', motoSaida.sku, { destino: 'Expedição' });
+    if (error) {
+        toast.error("Erro ao registrar a saída.");
+    } else if (!data || data.length === 0) {
+        toast.warning("Esta moto já não está mais no estoque.");
         setMotoSaida(null);
         fetchEstoque();
+    } else {
+        toast.success("Saída registrada!");
+        await registrarLog('SAIDA_ESTOQUE', motoSaida.sku, { destino: 'Expedição', modelo: motoSaida.modelo });
+        setMotoSaida(null);
+        fetchEstoque();
+    }
+    setExpedindo(false);
+  };
+
+  // Reimpressão direta (etiqueta danificada) sem tirar a moto do estoque
+  const handleReimprimir = async (moto: any) => {
+    setReimprimindo(moto.id);
+    try {
+        const { valor } = await carregarConfigEtiquetas();
+        const modelo = modeloPadrao(valor);
+        const html = await renderizarEtiquetas(modelo, [{
+            sku: moto.sku, modelo: moto.modelo, cor: moto.cor, cor_banco: moto.cor_banco, ano: moto.ano,
+            montador: moto.montador?.nome, supervisor: moto.supervisor?.nome, localizacao: moto.localizacao,
+        }], { modo: 'impressao', titulo: `ETIQUETA ${moto.sku}` });
+        await imprimirHTML(html);
+        await registrarLog('REIMPRESSAO_ETIQUETA', moto.sku, { modelo_etiqueta: modelo.nome, origem: 'estoque' });
+    } catch (err) {
+        console.error(err);
+        toast.error("Não foi possível reimprimir a etiqueta.");
+    } finally {
+        setReimprimindo(null);
     }
   };
 
@@ -177,19 +205,27 @@ export default function EstoquePage() {
 
       setRevertendo(true);
       try {
-          const { error } = await supabase
+          const { data, error } = await supabase
               .from('motos')
               .update({
                   status: 'aguardando_etiqueta',
                   localizacao: 'Pátio Montada (Aguardando Etiqueta)',
                   updated_at: new Date().toISOString()
               })
-              .eq('id', moto.id);
+              .eq('id', moto.id)
+              .eq('status', 'estoque')
+              .select('id');
 
           if (error) throw error;
+          if (!data || data.length === 0) {
+              toast.warning("Esta moto já não está mais no estoque.");
+              setMotoDetalhes(null);
+              fetchEstoque();
+              return;
+          }
 
           toast.success("Moto enviada de volta para Etiquetagem!");
-          await registrarLog('EDICAO', moto.sku, { 
+          await registrarLog('REVERSAO_ESTOQUE', moto.sku, { 
               motivo: 'Reversão de Estoque para Etiquetagem',
               detalhe_motivo: motivoFinal
           });
@@ -208,11 +244,30 @@ export default function EstoquePage() {
   const coresUnicas = Array.from(new Set(motos.map(m => m.cor).filter(Boolean))).sort();
 
   const motosFiltradas = motos.filter(m => {
-    const matchBusca = m.sku.toLowerCase().includes(busca.toLowerCase()) || m.modelo.toLowerCase().includes(busca.toLowerCase());
+    const termo = busca.toLowerCase();
+    const matchBusca = (m.sku || '').toLowerCase().includes(termo) || (m.modelo || '').toLowerCase().includes(termo) || (m.cor || '').toLowerCase().includes(termo);
     const matchModelo = filtroModelo === "todos" || m.modelo === filtroModelo;
     const matchCor = filtroCor === "todas" || m.cor === filtroCor;
     return matchBusca && matchModelo && matchCor;
   });
+
+  // Exporta a lista filtrada (CSV com ; e BOM: abre corretamente no Excel em português)
+  const handleExportarCSV = () => {
+    if (motosFiltradas.length === 0) return toast.warning("Nada para exportar.");
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const cabecalho = ['Chassi', 'Modelo', 'Ano', 'Cor', 'Banco', 'Montador', 'Inspetor QA', 'Retrabalhos', 'Reparada por', 'Entrada no estoque', 'Dias em estoque', 'Localização'];
+    const linhas = motosFiltradas.map(m => [
+      m.sku, m.modelo, m.ano, m.cor, m.cor_banco, m.montador?.nome, m.supervisor?.nome, m.rework_count || 0, m.tecnico_reparo || '',
+      m.updated_at ? new Date(m.updated_at).toLocaleString('pt-BR') : '', Math.floor(minutosDesde(m.updated_at) / 1440), m.localizacao,
+    ].map(esc).join(';'));
+    const blob = new Blob(['\uFEFF' + [cabecalho.map(esc).join(';'), ...linhas].join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `estoque_shineray_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   return (
     <RoleGuard allowedRoles={['gestor', 'master', 'supervisor']}>
@@ -226,13 +281,19 @@ export default function EstoquePage() {
             </h1>
             <p className="text-slate-500">Gestão centralizada de inventário pronto.</p>
           </div>
-          <div className="flex gap-2">
-             <Badge variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50 px-3 py-1">
+          <div className="flex flex-wrap gap-2 items-center">
+             <Badge variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900 px-3 py-1">
                 {motos.length} Unidades Totais
              </Badge>
-             <Badge variant="outline" className="text-slate-700 border-slate-200 bg-slate-50 px-3 py-1">
+             <Badge variant="outline" className="text-slate-700 border-slate-200 bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-800 px-3 py-1">
                 {modelosUnicos.length} Modelos
              </Badge>
+             <Button variant="outline" size="sm" onClick={handleExportarCSV} className="h-8">
+                <Download className="w-4 h-4 mr-1" /> Exportar CSV
+             </Button>
+             <Button variant="ghost" size="icon" onClick={fetchEstoque} className="h-8 w-8" title="Atualizar" aria-label="Atualizar estoque">
+                <RefreshCw className="w-4 h-4" />
+             </Button>
           </div>
         </div>
 
@@ -241,7 +302,7 @@ export default function EstoquePage() {
             <div className="relative flex-1">
                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                <Input 
-                   placeholder="Buscar chassi ou modelo..." 
+                   placeholder="Buscar chassi, modelo ou cor..." 
                    className="pl-10 h-10 border-slate-200 dark:border-slate-700" 
                    value={busca}
                    onChange={e => setBusca(e.target.value)}
@@ -301,7 +362,14 @@ export default function EstoquePage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {motosFiltradas.length === 0 ? (
+                            {carregando ? (
+                                <TableRow>
+                                    <TableCell colSpan={5} className="text-center py-12 text-slate-400">
+                                        <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin opacity-40"/>
+                                        Carregando estoque...
+                                    </TableCell>
+                                </TableRow>
+                            ) : motosFiltradas.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={5} className="text-center py-12 text-slate-400">
                                         <Warehouse className="w-12 h-12 mx-auto mb-3 opacity-20"/>
@@ -332,9 +400,10 @@ export default function EstoquePage() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-col gap-1">
-                                                <div className="flex items-center text-xs text-slate-500">
+                                                <div className="flex items-center text-xs text-slate-500" title="Entrada no estoque">
                                                     <Calendar className="w-3 h-3 mr-1"/>
                                                     {new Date(moto.updated_at).toLocaleDateString()}
+                                                    <span className="ml-1 text-slate-400">({Math.floor(minutosDesde(moto.updated_at) / 1440)}d)</span>
                                                 </div>
                                                 <div className="flex gap-1">
                                                     {moto.rework_count > 0 && <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">Rework</Badge>}
@@ -345,8 +414,8 @@ export default function EstoquePage() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-col text-xs">
-                                                <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400"><User className="w-3 h-3"/> Mont: {moto.montador?.nome.split(' ')[0]}</span>
-                                                <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400"><CheckCircle2 className="w-3 h-3 text-green-500"/> QA: {moto.supervisor?.nome.split(' ')[0]}</span>
+                                                <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400"><User className="w-3 h-3"/> Mont: {moto.montador?.nome?.split(' ')[0] || '—'}</span>
+                                                <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400"><CheckCircle2 className="w-3 h-3 text-green-500"/> QA: {moto.supervisor?.nome?.split(' ')[0] || '—'}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right">
@@ -357,7 +426,7 @@ export default function EstoquePage() {
                                                             <FileJson className="w-4 h-4"/>
                                                         </Button>
                                                     </DialogTrigger>
-                                                    <DialogContent className="max-w-2xl bg-white dark:bg-slate-950 p-0 overflow-hidden shadow-2xl rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                                                    <DialogContent className="sm:max-w-2xl bg-white dark:bg-slate-950 p-0 overflow-hidden shadow-2xl rounded-2xl border border-slate-200/80 dark:border-slate-800">
                                                         {/* Header com gradiente */}
                                                         <div className="bg-gradient-to-r from-emerald-600 to-teal-800 dark:from-emerald-950 dark:to-teal-900 text-white p-6 relative overflow-hidden">
                                                             <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
@@ -389,28 +458,28 @@ export default function EstoquePage() {
                                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                                                         <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
                                                                             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                                                                <PaintBucket className="w-3.5 h-3.5 text-slate-450"/> Carenagem
+                                                                                <PaintBucket className="w-3.5 h-3.5 text-slate-400"/> Carenagem
                                                                             </span>
                                                                             <div className="flex items-center gap-2 mt-2">
                                                                                 <div className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-700 shadow-sm" style={{backgroundColor: getHexColor(moto.cor)}}></div>
-                                                                                <span className="font-bold text-sm text-slate-850 dark:text-slate-200 capitalize">{moto.cor}</span>
+                                                                                <span className="font-bold text-sm text-slate-800 dark:text-slate-200 capitalize">{moto.cor}</span>
                                                                             </div>
                                                                         </div>
                                                                         <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
                                                                             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                                                                <PaintBucket className="w-3.5 h-3.5 text-slate-450"/> Banco
+                                                                                <PaintBucket className="w-3.5 h-3.5 text-slate-400"/> Banco
                                                                             </span>
-                                                                            <p className="font-bold text-sm text-slate-850 dark:text-slate-200 mt-2 capitalize">{moto.cor_banco || 'N/A'}</p>
+                                                                            <p className="font-bold text-sm text-slate-800 dark:text-slate-200 mt-2 capitalize">{moto.cor_banco || 'N/A'}</p>
                                                                         </div>
                                                                         <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
                                                                             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                                                                <Calendar className="w-3.5 h-3.5 text-slate-450"/> Ano Modelo
+                                                                                <Calendar className="w-3.5 h-3.5 text-slate-400"/> Ano Modelo
                                                                             </span>
-                                                                            <p className="font-bold text-sm text-slate-850 dark:text-slate-200 mt-2">{moto.ano}</p>
+                                                                            <p className="font-bold text-sm text-slate-800 dark:text-slate-200 mt-2">{moto.ano}</p>
                                                                         </div>
                                                                         <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
                                                                             <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                                                                <Tag className="w-3.5 h-3.5 text-slate-455"/> Status
+                                                                                <Tag className="w-3.5 h-3.5 text-slate-400"/> Status
                                                                             </span>
                                                                             <Badge className="bg-emerald-500/10 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border-0 mt-2 text-[10px] w-fit px-2 py-0.5">
                                                                                 ESTOQUE
@@ -433,7 +502,7 @@ export default function EstoquePage() {
                                                                                 </div>
                                                                                 <div className="text-left md:text-center">
                                                                                     <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Montagem</p>
-                                                                                    <p className="text-[10px] text-slate-505 font-medium">Por: {moto.montador?.nome?.split(' ')[0] || 'N/A'}</p>
+                                                                                    <p className="text-[10px] text-slate-500 font-medium">Por: {moto.montador?.nome?.split(' ')[0] || 'N/A'}</p>
                                                                                     <p className="text-[9px] text-slate-400">{new Date(moto.created_at).toLocaleDateString()}</p>
                                                                                 </div>
                                                                             </div>
@@ -445,7 +514,7 @@ export default function EstoquePage() {
                                                                                 </div>
                                                                                 <div className="text-left md:text-center">
                                                                                     <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Controle QA</p>
-                                                                                    <p className="text-[10px] text-slate-550 font-medium">Por: {moto.supervisor?.nome?.split(' ')[0] || 'N/A'}</p>
+                                                                                    <p className="text-[10px] text-slate-500 font-medium">Por: {moto.supervisor?.nome?.split(' ')[0] || 'N/A'}</p>
                                                                                 </div>
                                                                             </div>
 
@@ -456,7 +525,7 @@ export default function EstoquePage() {
                                                                                 </div>
                                                                                 <div className="text-left md:text-center">
                                                                                     <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Etiquetagem</p>
-                                                                                    <p className="text-[10px] text-slate-550 font-medium">Etiqueta Aplicada</p>
+                                                                                    <p className="text-[10px] text-slate-500 font-medium">Etiqueta Aplicada</p>
                                                                                 </div>
                                                                             </div>
 
@@ -476,7 +545,7 @@ export default function EstoquePage() {
 
                                                                     {/* Histórico de Qualidade */}
                                                                     <div className="space-y-4">
-                                                                        <h4 className="text-xs font-black text-slate-400 dark:text-slate-550 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-1.5">
+                                                                        <h4 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-1.5">
                                                                             <Wrench className="w-4 h-4 text-slate-400"/> Histórico de Qualidade & Reparos
                                                                         </h4>
 
@@ -496,13 +565,13 @@ export default function EstoquePage() {
 
                                                                         {motoDetalhes?.tecnico_reparo && (
                                                                             <div className="bg-blue-500/5 border border-blue-500/10 text-slate-700 dark:text-slate-300 p-4 rounded-xl space-y-2">
-                                                                                <div className="flex items-center gap-2 text-xs font-bold text-blue-650 dark:text-blue-400 uppercase tracking-wider">
+                                                                                <div className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
                                                                                     <Wrench className="w-4 h-4"/> Último Reparo Concluído
                                                                                 </div>
-                                                                                <p className="text-xs text-slate-650 dark:text-slate-350 leading-relaxed bg-white dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80">
-                                                                                    "{motoDetalhes.observacoes || "Sem observações detalhadas registradas."}"
+                                                                                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-white dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80">
+                                                                                    &quot;{motoDetalhes.observacoes || "Sem observações detalhadas registradas."}&quot;
                                                                                 </p>
-                                                                                <div className="text-[10px] text-slate-405">
+                                                                                <div className="text-[10px] text-slate-400">
                                                                                     Técnico Responsável: <strong className="text-slate-600 dark:text-slate-300">{motoDetalhes.tecnico_reparo}</strong>
                                                                                 </div>
                                                                             </div>
@@ -515,23 +584,23 @@ export default function EstoquePage() {
                                                                                     {historicoAvarias.map((av, idx) => (
                                                                                         <div key={idx} className="bg-red-500/5 dark:bg-red-500/5 p-3.5 rounded-xl border border-red-500/10 dark:border-red-500/10 text-sm">
                                                                                             <div className="flex justify-between items-start mb-1.5">
-                                                                                                <span className="font-bold text-red-650 dark:text-red-400 capitalize text-[10px] bg-red-500/10 dark:bg-red-500/20 px-2 py-0.5 rounded-md">
+                                                                                                <span className="font-bold text-red-600 dark:text-red-400 capitalize text-[10px] bg-red-500/10 dark:bg-red-500/20 px-2 py-0.5 rounded-md">
                                                                                                     {av.tipo_avaria.replace('avaria_', '').replace('_', ' ')}
                                                                                                 </span>
                                                                                                 <span className="text-[10px] text-slate-400">{new Date(av.created_at).toLocaleDateString()}</span>
                                                                                             </div>
-                                                                                            <p className="text-xs text-slate-650 dark:text-slate-350 italic">"{av.descricao_problema}"</p>
+                                                                                            <p className="text-xs text-slate-600 dark:text-slate-300 italic">&quot;{av.descricao_problema}&quot;</p>
                                                                                             
                                                                                             {av.descricao_solucao && (
                                                                                                 <div className="mt-2.5 pt-2 border-t border-red-500/10 dark:border-red-500/10">
-                                                                                                    <p className="text-xs text-emerald-650 dark:text-emerald-450 leading-relaxed">
+                                                                                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 leading-relaxed">
                                                                                                         <strong className="font-bold">Solução Aplicada:</strong> {av.descricao_solucao}
                                                                                                     </p>
                                                                                                 </div>
                                                                                             )}
                                                                                             {av.data_resolucao && (
-                                                                                                <div className="mt-2 text-[10px] text-emerald-650 dark:text-emerald-450 flex items-center gap-1.5">
-                                                                                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500"/> Resolvido por <strong className="text-emerald-700 dark:text-emerald-350">{av.tecnico_nome}</strong> em {new Date(av.data_resolucao).toLocaleDateString()}
+                                                                                                <div className="mt-2 text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                                                                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500"/> Resolvido por <strong className="text-emerald-700 dark:text-emerald-300">{av.tecnico_nome}</strong> em {new Date(av.data_resolucao).toLocaleDateString()}
                                                                                                 </div>
                                                                                             )}
                                                                                         </div>
@@ -540,9 +609,9 @@ export default function EstoquePage() {
                                                                             </div>
                                                                         ) : (
                                                                             !motoDetalhes?.rework_count && !motoDetalhes?.tecnico_reparo && (
-                                                                                <div className="text-center py-8 text-slate-400 dark:text-slate-550 bg-slate-50 dark:bg-slate-900/20 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                                                                                <div className="text-center py-8 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900/20 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
                                                                                     <CheckCircle2 className="w-10 h-10 mx-auto mb-2.5 text-emerald-500/50"/>
-                                                                                    <p className="font-bold text-sm text-slate-705 dark:text-slate-300">Veículo de Primeira Linha</p>
+                                                                                    <p className="font-bold text-sm text-slate-700 dark:text-slate-300">Veículo de Primeira Linha</p>
                                                                                     <p className="text-xs mt-0.5">Nenhum defeito ou retrabalho foi registrado para esta moto.</p>
                                                                                 </div>
                                                                             )
@@ -600,9 +669,9 @@ export default function EstoquePage() {
                                                                                    type="checkbox"
                                                                                    checked={declaracaoReverter}
                                                                                    onChange={(e) => setDeclaracaoReverter(e.target.checked)}
-                                                                                   className="mt-1 w-4 h-4 rounded text-amber-655 focus:ring-amber-500 border-slate-350 dark:border-slate-700"
+                                                                                   className="mt-1 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 dark:border-slate-700"
                                                                               />
-                                                                              <span className="text-xs font-medium text-slate-650 dark:text-slate-300 leading-normal">
+                                                                              <span className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-normal">
                                                                                    Confirmo que esta moto deve retornar para a etapa de Etiquetagem e todas as áreas operacionais correspondentes serão notificadas desta alteração.
                                                                               </span>
                                                                          </label>
@@ -632,7 +701,7 @@ export default function EstoquePage() {
                                                                     <Button 
                                                                         variant="ghost" 
                                                                         onClick={() => setIsRevertingConfirm(false)}
-                                                                        className="h-10 text-slate-550 dark:text-slate-400 font-bold"
+                                                                        className="h-10 text-slate-500 dark:text-slate-400 font-bold"
                                                                         disabled={revertendo}
                                                                     >
                                                                         Voltar aos Detalhes
@@ -659,7 +728,11 @@ export default function EstoquePage() {
                                                     </DialogContent>
                                                 </Dialog>
 
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-amber-600 hover:bg-amber-50" onClick={() => handleAbrirEditar(moto)} title="Editar Moto">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50" onClick={() => handleReimprimir(moto)} disabled={reimprimindo === moto.id} title="Reimprimir etiqueta" aria-label="Reimprimir etiqueta">
+                                                    {reimprimindo === moto.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Printer className="w-4 h-4"/>}
+                                                </Button>
+
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-amber-600 hover:bg-amber-50" onClick={() => handleAbrirEditar(moto)} title="Editar Moto" aria-label="Editar moto">
                                                     <Pencil className="w-4 h-4"/>
                                                 </Button>
                                                 
@@ -678,16 +751,21 @@ export default function EstoquePage() {
         </Card>
 
         {/* Modal de Saída */}
-        <Dialog open={!!motoSaida} onOpenChange={(open) => !open && setMotoSaida(null)}>
-            <DialogContent>
-                <DialogHeader><DialogTitle>Confirmar Expedição</DialogTitle></DialogHeader>
-                <div className="py-4">
+        <Dialog open={!!motoSaida} onOpenChange={(open) => !open && !expedindo && setMotoSaida(null)}>
+            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2"><Truck className="w-5 h-5 text-emerald-600"/> Confirmar Expedição</DialogTitle>
+                    <DialogDescription>A moto sai do estoque disponível e fica registrada como expedida.</DialogDescription>
+                </DialogHeader>
+                <div className="py-2">
                     <p>Deseja dar baixa na moto <strong>{motoSaida?.modelo}</strong>?</p>
-                    <div className="mt-2 bg-slate-100 p-2 rounded text-sm font-mono text-slate-600">{motoSaida?.sku}</div>
+                    <div className="mt-2 bg-slate-100 dark:bg-slate-900 p-2 rounded text-sm font-mono text-slate-600 dark:text-slate-300">{motoSaida?.sku}</div>
                 </div>
                 <DialogFooter>
-                    <Button variant="ghost" onClick={() => setMotoSaida(null)}>Cancelar</Button>
-                    <Button onClick={handleDarBaixa} className="bg-emerald-600 text-white">Confirmar</Button>
+                    <Button variant="ghost" onClick={() => setMotoSaida(null)} disabled={expedindo}>Cancelar</Button>
+                    <Button onClick={handleDarBaixa} disabled={expedindo} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                        {expedindo ? <><Loader2 className="w-4 h-4 mr-2 animate-spin"/> Registrando...</> : "Confirmar"}
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -760,7 +838,11 @@ export default function EstoquePage() {
                                  placeholder="Ex: Vermelha..." 
                                  value={corEdit} 
                                  onChange={e => setCorEdit(e.target.value)} 
+                                 list="catalogo-cores-carenagem"
                             />
+                            <datalist id="catalogo-cores-carenagem">
+                                {configGeral.coresCarenagem.map(c => <option key={c.nome} value={c.nome}>{c.descricao}</option>)}
+                            </datalist>
                         </div>
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-slate-400 uppercase">Cor do Banco</label>
@@ -768,7 +850,11 @@ export default function EstoquePage() {
                                  placeholder="Ex: Preto..." 
                                  value={corBancoEdit} 
                                  onChange={e => setCorBancoEdit(e.target.value)} 
+                                 list="catalogo-cores-banco"
                             />
+                            <datalist id="catalogo-cores-banco">
+                                {configGeral.coresBanco.map(c => <option key={c.nome} value={c.nome}>{c.descricao}</option>)}
+                            </datalist>
                         </div>
                     </div>
                 </div>
