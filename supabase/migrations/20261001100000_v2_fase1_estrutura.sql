@@ -128,6 +128,7 @@ on conflict (chave) do nothing;
 alter table public.funcionarios add column if not exists perfil_id    uuid references public.perfis(id);
 alter table public.funcionarios add column if not exists auth_user_id uuid;
 alter table public.funcionarios add column if not exists login_email  text;
+alter table public.funcionarios alter column senha drop not null;
 create unique index if not exists funcionarios_auth_user_id_key on public.funcionarios (auth_user_id) where auth_user_id is not null;
 create index if not exists funcionarios_login_email_idx on public.funcionarios (lower(login_email));
 
