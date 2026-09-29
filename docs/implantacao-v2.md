@@ -113,7 +113,7 @@ Até a fase 4 a V1 ainda funciona: se algo der errado, basta promover a publica�
 
 ## Fase 4 — Segurança no banco (SQL)
 
-1. *SQL Editor* > conteúdo de `supabase/migrations/20261001100100_v2_fase3_rls.sql` > executar.
+1. *SQL Editor* > conteúdo de `supabase/migrations/20261001100100_v2_fase4_rls.sql` > executar.
 2. A mensagem **"tabelas sem RLS"** lista tabelas do schema `public` que continuam abertas para a chave
    pública (se houver tabelas que o SGM não conhece). Avalie cada uma.
 3. A partir daqui a V1 para de funcionar (ela lia o banco sem login). Tablets com a V1 aberta precisam ser recarregados.
@@ -141,7 +141,7 @@ tudo continua funcionando com atualização periódica (20 a 60 segundos).
 Depois de alguns dias de uso normal da V2 (todos já entraram pelo menos uma vez):
 
 1. Confirme o backup.
-2. Execute `supabase/migrations/20261001100200_v2_fase4_limpeza.sql`.
+2. Execute `supabase/migrations/20261001100200_v2_fase5_limpeza.sql`.
 
 Isso apaga a coluna `funcionarios.senha` (senhas e PINs em texto puro da V1) e remove o acesso residual
 da chave pública às tabelas.
