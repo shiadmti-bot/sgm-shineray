@@ -201,6 +201,7 @@ grant execute on all functions in schema privado to authenticated, service_role;
 -- -------------------------------------------------------------------------------------
 
 -- Perfil e permissões do usuário logado
+drop function if exists public.meu_perfil();
 create or replace function public.meu_perfil()
 returns jsonb language sql stable security definer set search_path = '' as $$
   select jsonb_build_object(
