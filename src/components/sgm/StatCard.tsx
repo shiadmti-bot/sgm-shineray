@@ -1,19 +1,32 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Led, type EstadoLed } from "./Led";
 
 export type Tom = "neutro" | "primario" | "sucesso" | "alerta" | "perigo" | "info";
 
-export const CORES_TOM: Record<Tom, { icone: string; destaque: string }> = {
-  neutro: { icone: "bg-muted text-muted-foreground", destaque: "" },
-  primario: { icone: "bg-primary/10 text-primary", destaque: "border-primary/40" },
-  sucesso: { icone: "bg-success/10 text-success", destaque: "border-success/40" },
-  alerta: { icone: "bg-warning/10 text-warning", destaque: "border-warning/50" },
-  perigo: { icone: "bg-destructive/10 text-destructive", destaque: "border-destructive/50" },
-  info: { icone: "bg-info/10 text-info", destaque: "border-info/40" },
+const LED_DO_TOM: Record<Tom, EstadoLed> = {
+  neutro: "neutro",
+  primario: "processo",
+  sucesso: "bom",
+  alerta: "atencao",
+  perigo: "critico",
+  info: "processo",
 };
 
-/** Indicador numérico padrão (painel, relatórios, inventário). */
+const BORDA_DESTAQUE: Record<Tom, string> = {
+  neutro: "before:bg-sutil",
+  primario: "before:bg-info",
+  sucesso: "before:bg-success",
+  alerta: "before:bg-warning",
+  perigo: "before:bg-destructive",
+  info: "before:bg-info",
+};
+
+/**
+ * Leitura de instrumento: rótulo técnico com lâmpada de estado, valor e observação.
+ * `destacar` acende a faixa superior (fora do normal).
+ */
 export function StatCard({
   rotulo,
   valor,
@@ -30,7 +43,6 @@ export function StatCard({
   icone?: LucideIcon;
   tom?: Tom;
   dica?: React.ReactNode;
-  /** Borda colorida para chamar atenção (ex.: acima do limite). */
   destacar?: boolean;
   carregando?: boolean;
   href?: string;
@@ -39,30 +51,29 @@ export function StatCard({
   const conteudo = (
     <div
       className={cn(
-        "flex h-full items-start justify-between gap-3 rounded-xl border bg-card p-4 shadow-xs transition-colors",
-        destacar && CORES_TOM[tom].destaque,
-        href && "hover:bg-accent/60",
+        "relative flex h-full flex-col gap-2 overflow-hidden rounded-lg border bg-card px-4 pb-3.5 pt-4 transition-colors",
+        destacar && ["before:absolute before:inset-x-0 before:top-0 before:h-[3px]", BORDA_DESTAQUE[tom]],
+        href && "hover:border-foreground/25",
         className,
       )}
     >
-      <div className="min-w-0 space-y-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{rotulo}</p>
-        {carregando ? (
-          <div className="h-8 w-16 animate-pulse rounded-md bg-muted" />
-        ) : (
-          <p className="text-2xl font-bold tabular-nums tracking-tight text-foreground">{valor}</p>
-        )}
-        {dica && <p className="text-xs text-muted-foreground">{dica}</p>}
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-2">
+          <Led estado={LED_DO_TOM[tom]} piscando={destacar && (tom === "perigo" || tom === "alerta")} />
+          <span className="rotulo truncate text-muted-foreground">{rotulo}</span>
+        </span>
+        {Icone && <Icone className="size-4 shrink-0 text-sutil" />}
       </div>
-      {Icone && (
-        <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg", CORES_TOM[tom].icone)}>
-          <Icone className="size-5" />
-        </div>
+      {carregando ? (
+        <div className="h-8 w-14 animate-pulse rounded-sm bg-muted" />
+      ) : (
+        <p className="text-[28px] font-semibold leading-none tracking-tight text-foreground">{valor}</p>
       )}
+      {dica && <p className="text-xs leading-snug text-sutil">{dica}</p>}
     </div>
   );
   return href ? (
-    <Link href={href} className="block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Link href={href} className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring">
       {conteudo}
     </Link>
   ) : (

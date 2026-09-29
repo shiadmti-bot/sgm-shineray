@@ -4,13 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
-  SlidersHorizontal, Target, ListChecks, PaintBucket, Armchair, Bike, Tag, Cloud, HardDrive, Database,
+  Target, ListChecks, PaintBucket, Armchair, Bike, Tag, Cloud, HardDrive, Database,
   ArrowUp, ArrowDown, Trash2, Plus, Save, Loader2, ArrowRight, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { PageHeader } from "@/components/sgm/PageHeader";
+import { Led } from "@/components/sgm/Led";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ function BotoesOrdem({ idx, total, onMover, onRemover }: { idx: number; total: n
     <div className="flex items-center shrink-0">
       <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => onMover(-1)} disabled={idx === 0} aria-label="Subir"><ArrowUp className="w-3.5 h-3.5" /></Button>
       <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => onMover(1)} disabled={idx === total - 1} aria-label="Descer"><ArrowDown className="w-3.5 h-3.5" /></Button>
-      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={onRemover} aria-label="Remover"><Trash2 className="w-3.5 h-3.5" /></Button>
+      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onRemover} aria-label="Remover"><Trash2 className="w-3.5 h-3.5" /></Button>
     </div>
   );
 }
@@ -205,20 +205,21 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
               <div key={idx} className="flex items-center gap-2">
                 <Input value={m.vds} onChange={(e) => set("modelosExtras", cfg.modelosExtras.map((x, i) => (i === idx ? { ...x, vds: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) } : x)))} placeholder="VDS" className="h-9 w-28 font-mono uppercase shrink-0" />
                 <Input value={m.modelo} onChange={(e) => set("modelosExtras", cfg.modelosExtras.map((x, i) => (i === idx ? { ...x, modelo: e.target.value } : x)))} placeholder="Nome do modelo (ex.: JET 125 2027)" className="h-9" />
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500 shrink-0" onClick={() => set("modelosExtras", cfg.modelosExtras.filter((_, i) => i !== idx))} aria-label="Remover código"><Trash2 className="w-3.5 h-3.5" /></Button>
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive" onClick={() => set("modelosExtras", cfg.modelosExtras.filter((_, i) => i !== idx))} aria-label="Remover código"><Trash2 className="w-3.5 h-3.5" /></Button>
               </div>
             ))}
             <Button type="button" variant="outline" size="sm" onClick={() => set("modelosExtras", [...cfg.modelosExtras, { vds: "", modelo: "" }])}><Plus className="w-4 h-4 mr-1" /> Adicionar código</Button>
           </div>
 
-          <div className="p-3 rounded-xl bg-muted/50 border border-border space-y-2">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Testar um chassi</label>
+          <div className="space-y-2 rounded-md border bg-background/60 p-3">
+            <label className="rotulo text-sutil">Testar um chassi</label>
             <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <Input value={vinTeste} onChange={(e) => setVinTeste(e.target.value.toUpperCase())} maxLength={17} placeholder="Cole ou bipe um chassi de 17 caracteres" className="h-9 font-mono uppercase sm:max-w-sm" />
               {resultadoTeste && (
-                <Badge className={cn("w-fit border-0", resultadoTeste === "Modelo Desconhecido" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400")}>
+                <span className="flex w-fit items-center gap-1.5 rounded-sm border bg-card px-2 py-1 text-xs font-medium">
+                  <Led estado={resultadoTeste === "Modelo Desconhecido" ? "critico" : "bom"} className="size-2" />
                   {resultadoTeste}
-                </Badge>
+                </span>
               )}
             </div>
           </div>
@@ -253,14 +254,15 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
       </Card>
 
       {/* Armazenamento */}
-      <Card className={cn("py-0 border", tabelaAusente ? "border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20" : "bg-card border-border")}>
+      <Card className={cn("py-0", tabelaAusente && "border-l-[3px] border-l-warning")}>
         <CardContent className="p-5 flex items-start gap-3">
-          <Database className={cn("w-6 h-6 shrink-0 mt-0.5", tabelaAusente ? "text-amber-600" : "text-muted-foreground")} />
+          <Database className={cn("w-6 h-6 shrink-0 mt-0.5", tabelaAusente ? "text-warning" : "text-muted-foreground")} />
           <div className="text-sm space-y-1">
             <p className="font-bold flex items-center gap-2">
               Armazenamento das configurações
-              {origem === "servidor" ? <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0"><Cloud className="w-3 h-3 mr-1" /> Compartilhado</Badge>
-                : <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0"><HardDrive className="w-3 h-3 mr-1" /> Local</Badge>}
+              {origem === "servidor"
+                ? <span className="flex items-center gap-1.5 rounded-sm border px-1.5 py-0.5 text-xs font-medium"><Led estado="bom" className="size-2" /><Cloud className="size-3" /> Compartilhado</span>
+                : <span className="flex items-center gap-1.5 rounded-sm border px-1.5 py-0.5 text-xs font-medium"><Led estado="atencao" className="size-2" /><HardDrive className="size-3" /> Local</span>}
             </p>
             {tabelaAusente ? (
               <p className="text-muted-foreground">
@@ -277,12 +279,15 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
 
       {/* Barra de salvar */}
       <div className="sticky bottom-4 z-30">
-        <Card className={cn("py-0 gap-0 border-2 shadow-xl", alterado ? "border-blue-400 bg-card" : "border-border bg-card/90")}>
+        <Card className={cn("gap-0 py-0 shadow-lg", alterado ? "border-foreground" : "bg-card/95")}>
           <CardContent className="p-3 flex items-center justify-between gap-3">
-            <span className="text-xs text-muted-foreground">{alterado ? "Há alterações não salvas." : "Nenhuma alteração pendente."}</span>
+            <span className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Led estado={alterado ? "atencao" : "desligado"} piscando={alterado} className="size-2" />
+              {alterado ? "Há alterações não salvas." : "Nenhuma alteração pendente."}
+            </span>
             <div className="flex gap-2">
               <Button variant="ghost" disabled={!alterado || salvando} onClick={() => setCfg(clonar(base))}>Descartar</Button>
-              <Button disabled={!alterado || salvando} onClick={salvar} className="bg-primary hover:bg-primary/90 text-white font-bold">
+              <Button disabled={!alterado || salvando} onClick={salvar} className="font-semibold">
                 {salvando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Salvar
               </Button>
             </div>
@@ -297,14 +302,13 @@ export default function ConfiguracoesPage() {
   const { config, origem, tabelaAusente, carregando, recarregar } = useConfigGeral();
 
   return (
-      <div className="space-y-6 animate-in fade-in pb-10">
+      <div className="space-y-6 pb-10">
         <PageHeader
-          icone={SlidersHorizontal}
           titulo="Configurações do sistema"
           descricao="Metas, alertas, checklist, cores e modelos: ajustáveis sem atualizar o sistema."
         />
         {carregando ? (
-          <div className="space-y-4">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-40 w-full rounded-2xl" />)}</div>
+          <div className="space-y-4">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-40 w-full rounded-lg" />)}</div>
         ) : (
           <Formulario inicial={config} origem={origem} tabelaAusente={tabelaAusente} onSalvo={recarregar} />
         )}

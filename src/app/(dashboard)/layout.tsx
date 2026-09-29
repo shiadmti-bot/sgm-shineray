@@ -52,7 +52,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <Sheet open={menuMovel} onOpenChange={setMenuMovel}>
-        <SheetContent side="left" className="w-72 border-r p-0 sm:max-w-72" aria-describedby={undefined}>
+        <SheetContent
+          side="left"
+          className="w-72 border-r border-sidebar-border bg-sidebar p-0 sm:max-w-72 [&>button]:text-white [&>button]:opacity-80"
+          aria-describedby={undefined}
+        >
           <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
           <SheetDescription className="sr-only">Telas do sistema</SheetDescription>
           <Sidebar aoNavegar={() => setMenuMovel(false)} />
@@ -62,7 +66,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className={cn("flex min-h-screen flex-col transition-[padding] duration-200 print:pl-0", compacto ? "lg:pl-[72px]" : "lg:pl-64")}>
         <Header aoAbrirMenu={() => setMenuMovel(true)} compacto={compacto} aoAlternarCompacto={alternarCompacto} />
         <AvisoOffline />
-        <main className="flex-1 overflow-x-hidden p-4 md:p-6 lg:p-8">
+        <main className="fundo-tecnico flex-1 overflow-x-hidden p-4 md:p-6 lg:p-8 print:bg-none">
           <div className="mx-auto max-w-7xl space-y-6">
             <GuardaSessao>{children}</GuardaSessao>
           </div>

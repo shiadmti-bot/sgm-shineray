@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth";
 import { podeAcessarRota, rotaDoCaminho, telaInicial } from "@/lib/rbac/rotas";
 import { acompanharNotificacoes, aoChegarNotificacao } from "@/lib/notificacoes";
+import { acompanharContagens, atualizarContagensSeAntigas } from "@/lib/contagens";
 import { tocarSom } from "@/lib/sons";
 import { pode } from "@/lib/rbac/permissoes";
 
@@ -96,6 +97,15 @@ export function GuardaSessao({ children }: { children: React.ReactNode }) {
     const id = setInterval(verificar, INTERVALO_EXPIRACAO_MS);
     return () => clearInterval(id);
   }, [status, router]);
+
+  // Quantidade de motos em cada estação (menu lateral)
+  const logado = status === "autenticado";
+  useEffect(() => {
+    acompanharContagens(logado);
+  }, [logado]);
+  useEffect(() => {
+    atualizarContagensSeAntigas();
+  }, [pathname]);
 
   // Notificações do usuário (tempo real + atualização periódica)
   const funcionarioId = status === "autenticado" ? usuario?.id ?? null : null;

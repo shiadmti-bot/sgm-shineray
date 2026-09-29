@@ -229,7 +229,7 @@ function EditorCampos({ bloco, set }: { bloco: Extract<BlocoEtiqueta, { tipo: "c
             <Input value={item.valor} onChange={(e) => alterarItem(item.id, { valor: e.target.value })} placeholder="Valor ou {variavel}" className="h-9 font-mono text-xs" />
             <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => mover(idx, -1)} disabled={idx === 0} aria-label="Subir campo"><ArrowUp className="w-3.5 h-3.5" /></Button>
             <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => mover(idx, 1)} disabled={idx === itens.length - 1} aria-label="Descer campo"><ArrowDown className="w-3.5 h-3.5" /></Button>
-            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-red-500" onClick={() => set({ itens: itens.filter((i) => i.id !== item.id) })} aria-label="Remover campo"><Trash2 className="w-3.5 h-3.5" /></Button>
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive" onClick={() => set({ itens: itens.filter((i) => i.id !== item.id) })} aria-label="Remover campo"><Trash2 className="w-3.5 h-3.5" /></Button>
           </div>
         ))}
         <Button type="button" variant="outline" size="sm" onClick={() => set({ itens: [...itens, { id: novoId("c"), rotulo: "CAMPO:", valor: "" }] })}>
@@ -256,14 +256,14 @@ function EditorImagem({ bloco, set }: { bloco: Extract<BlocoEtiqueta, { tipo: "i
   return (
     <div className="grid grid-cols-2 gap-3">
       <div className="col-span-2 flex items-center gap-3">
-        <div className="w-24 h-16 rounded-md border border-dashed border-slate-300 dark:border-slate-700 bg-white flex items-center justify-center overflow-hidden">
+        <div className="w-24 h-16 rounded-sm border border-dashed border-foreground/25 bg-white flex items-center justify-center overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {bloco.src ? <img src={bloco.src} alt="" className="max-w-full max-h-full object-contain" /> : <ImageIcon className="w-6 h-6 text-slate-300" />}
+          {bloco.src ? <img src={bloco.src} alt="" className="max-w-full max-h-full object-contain" /> : <ImageIcon className="w-6 h-6 text-sutil" />}
         </div>
         <div className="flex flex-col gap-2">
           <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif" className="hidden" onChange={(e) => { carregar(e.target.files?.[0]); e.target.value = ""; }} />
           <Button type="button" variant="outline" size="sm" onClick={() => inputRef.current?.click()}><Upload className="w-4 h-4 mr-1" /> Escolher imagem</Button>
-          {bloco.src && <Button type="button" variant="ghost" size="sm" className="text-red-500" onClick={() => set({ src: "" })}>Remover</Button>}
+          {bloco.src && <Button type="button" variant="ghost" size="sm" className="text-destructive" onClick={() => set({ src: "" })}>Remover</Button>}
         </div>
       </div>
       <Campo rotulo="Largura máxima"><NumeroInput valor={bloco.larguraPct} onChange={(v) => set({ larguraPct: v })} min={5} max={100} sufixo="%" /></Campo>
@@ -494,13 +494,13 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
               <option value="subbanco">Baseado no Sub-banco 70×50</option>
             </select>
             <Button type="button" variant="outline" size="sm" className="h-9" disabled={ehPadrao} onClick={() => setRascunho((r) => ({ ...r, padraoId: modelo.id }))}>
-              <Star className={cn("w-4 h-4 mr-1", ehPadrao && "fill-amber-400 text-amber-500")} /> {ehPadrao ? "Modelo padrão" : "Definir como padrão"}
+              <Star className={cn("w-4 h-4 mr-1", ehPadrao && "fill-warning text-warning")} /> {ehPadrao ? "Modelo padrão" : "Definir como padrão"}
             </Button>
             <Button type="button" variant="outline" size="sm" className="h-9" onClick={exportar}><Download className="w-4 h-4 mr-1" /> Exportar</Button>
             <input ref={inputImportar} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importar(e.target.files?.[0]); e.target.value = ""; }} />
             <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => inputImportar.current?.click()}><Upload className="w-4 h-4 mr-1" /> Importar</Button>
             <Button type="button" variant="ghost" size="sm" className="h-9 text-muted-foreground" onClick={() => setDialogo("restaurar")}><RotateCcw className="w-4 h-4 mr-1" /> Restaurar fábrica</Button>
-            <Button type="button" variant="ghost" size="sm" className="h-9 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => setDialogo("excluir")} disabled={rascunho.modelos.length <= 1}>
+            <Button type="button" variant="ghost" size="sm" className="h-9 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setDialogo("excluir")} disabled={rascunho.modelos.length <= 1}>
               <Trash2 className="w-4 h-4 mr-1" /> Excluir
             </Button>
           </div>
@@ -557,14 +557,14 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
                   variant="outline"
                   className={cn(
                     "font-mono",
-                    excesso > 2 ? "border-amber-300 text-amber-700 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400" : "border-green-300 text-green-700 bg-green-50 dark:bg-green-950/30 dark:text-green-400"
+                    excesso > 2 ? "border-warning/60 text-foreground" : "border-success/50 text-foreground"
                   )}
                 >
                   {usada} / {disponivel} mm
                 </Badge>
               </div>
               {excesso > 2 && (
-                <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1.5 mt-2">
+                <p className="text-xs text-foreground flex items-center gap-1.5 mt-2">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> A soma das alturas passa {Math.round(excesso * 10) / 10} mm do espaço útil: os blocos serão comprimidos.
                 </p>
               )}
@@ -578,11 +578,11 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
               {modelo.blocos.map((bloco, idx) => {
                 const aberto = blocoAberto === bloco.id;
                 return (
-                  <div key={bloco.id} className={cn("rounded-xl border transition-colors", aberto ? "border-blue-300 dark:border-blue-800 bg-info/10" : "border-border", !bloco.visivel && "opacity-60")}>
+                  <div key={bloco.id} className={cn("rounded-md border bg-card transition-colors", aberto ? "border-foreground shadow-[0_0_0_1px_hsl(var(--foreground))]" : "border-border", !bloco.visivel && "opacity-60")}>
                     <div className="flex items-center gap-1 p-2">
                       <div className="flex flex-col">
-                        <button type="button" className="p-0.5 text-muted-foreground hover:text-slate-700 disabled:opacity-30" onClick={() => moverBloco(idx, -1)} disabled={idx === 0} aria-label="Subir bloco"><ArrowUp className="w-3.5 h-3.5" /></button>
-                        <button type="button" className="p-0.5 text-muted-foreground hover:text-slate-700 disabled:opacity-30" onClick={() => moverBloco(idx, 1)} disabled={idx === modelo.blocos.length - 1} aria-label="Descer bloco"><ArrowDown className="w-3.5 h-3.5" /></button>
+                        <button type="button" className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30" onClick={() => moverBloco(idx, -1)} disabled={idx === 0} aria-label="Subir bloco"><ArrowUp className="w-3.5 h-3.5" /></button>
+                        <button type="button" className="p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30" onClick={() => moverBloco(idx, 1)} disabled={idx === modelo.blocos.length - 1} aria-label="Descer bloco"><ArrowDown className="w-3.5 h-3.5" /></button>
                       </div>
                       <button type="button" className="p-1.5 rounded-md text-muted-foreground hover:bg-accent" onClick={() => alterarBloco(bloco.id, { visivel: !bloco.visivel })} aria-label={bloco.visivel ? "Ocultar bloco" : "Mostrar bloco"} title={bloco.visivel ? "Ocultar" : "Mostrar"}>
                         {bloco.visivel ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -598,7 +598,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
                       <Button type="button" variant="ghost" size="icon" className="h-8 w-8" title="Duplicar" aria-label="Duplicar bloco" onClick={() => alterarBlocos((blocos) => { const copia = { ...clonar(bloco), id: novoId() }; const novos = [...blocos]; novos.splice(idx + 1, 0, copia); return novos; })}>
                         <Copy className="w-3.5 h-3.5" />
                       </Button>
-                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-500" title="Remover" aria-label="Remover bloco" onClick={() => alterarBlocos((blocos) => blocos.filter((b) => b.id !== bloco.id))}>
+                      <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive" title="Remover" aria-label="Remover bloco" onClick={() => alterarBlocos((blocos) => blocos.filter((b) => b.id !== bloco.id))}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -627,7 +627,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
               <select
                 value=""
                 onChange={(e) => { if (e.target.value) adicionarBloco(e.target.value as TipoBloco); }}
-                className="h-10 w-full rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-transparent px-3 text-sm font-medium text-muted-foreground hover:border-blue-400 cursor-pointer"
+                className="h-10 w-full cursor-pointer rounded-md border border-dashed border-foreground/25 bg-transparent px-3 text-sm font-medium text-muted-foreground hover:border-foreground/50"
                 aria-label="Adicionar bloco"
               >
                 <option value="">+ Adicionar bloco…</option>
@@ -643,7 +643,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
               {VARIAVEIS_ETIQUETA.map((v) => (
-                <button key={v.chave} type="button" onClick={() => copiarVariavel(v.chave)} className="text-left rounded-lg border border-border px-2.5 py-1.5 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors">
+                <button key={v.chave} type="button" onClick={() => copiarVariavel(v.chave)} className="text-left rounded-sm border border-border px-2.5 py-1.5 hover:border-foreground/40 hover:bg-accent transition-colors">
                   <span className="block font-mono text-xs font-bold text-info">{`{${v.chave}}`}</span>
                   <span className="block text-[10px] text-muted-foreground">{v.descricao}</span>
                 </button>
@@ -670,7 +670,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
                 {amostras.map((a, i) => <option key={`${a.sku}-${i}`} value={i}>{a.sku} — {a.modelo}</option>)}
               </select>
             </CardHeader>
-            <CardContent className="bg-slate-100 dark:bg-slate-950 p-2">
+            <CardContent className="fundo-tecnico bg-muted p-2">
               <PreviewEtiqueta modelo={modelo} dados={dadosPreview} alturaMaxima={620} />
             </CardContent>
           </Card>
@@ -686,10 +686,10 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
 
       {/* Barra de salvar */}
       <div className="sticky bottom-4 z-30">
-        <Card className={cn("py-0 gap-0 border-2 shadow-xl transition-colors", alterado ? "border-blue-400 bg-card" : "border-border bg-card/90")}>
+        <Card className={cn("gap-0 py-0 shadow-lg transition-colors", alterado ? "border-foreground" : "bg-card/95")}>
           <CardContent className="p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {origem === "servidor" ? <Cloud className="w-4 h-4 text-green-600" /> : <HardDrive className="w-4 h-4 text-amber-600" />}
+              {origem === "servidor" ? <Cloud className="w-4 h-4 text-success" /> : <HardDrive className="w-4 h-4 text-warning" />}
               <span>
                 {origem === "servidor" && "Layout compartilhado entre todas as estações."}
                 {origem === "local" && (tabelaAusente ? "Layout salvo só neste dispositivo — execute a migração do banco (README) para compartilhar." : "Usando cópia local (servidor indisponível).")}
@@ -713,7 +713,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
         <DialogContent className="bg-card">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {dialogo === "excluir" ? <><Trash2 className="w-5 h-5 text-red-600" /> Excluir modelo</> : <><FilePlus2 className="w-5 h-5 text-primary" /> Restaurar modelos de fábrica</>}
+              {dialogo === "excluir" ? <><Trash2 className="w-5 h-5 text-destructive" /> Excluir modelo</> : <><FilePlus2 className="w-5 h-5 text-primary" /> Restaurar modelos de fábrica</>}
             </DialogTitle>
             <DialogDescription>
               {dialogo === "excluir"
@@ -724,7 +724,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDialogo(null)}>Cancelar</Button>
             {dialogo === "excluir"
-              ? <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={excluirModelo}>Excluir</Button>
+              ? <Button variant="destructive" onClick={excluirModelo}>Excluir</Button>
               : <Button className="bg-primary hover:bg-primary/90 text-white" onClick={restaurarFabrica}>Restaurar</Button>}
           </DialogFooter>
         </DialogContent>

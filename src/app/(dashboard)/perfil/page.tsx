@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StatCard } from "@/components/sgm/StatCard";
 import { Iniciais } from "@/components/sgm/Iniciais";
+import { Selo } from "@/components/sgm/Selo";
 import { supabase } from "@/lib/supabase";
 import { registrarLog } from "@/lib/logger";
 import { DURACAO_MAXIMA_SESSAO_MS, inicioDaSessao, sair, useHidratado, useUsuarioLogado } from "@/lib/auth";
@@ -131,8 +132,8 @@ export default function PerfilPage() {
           <div className="flex-1 text-center md:text-left">
             <h1 className="text-2xl font-bold tracking-tight">{usuario.nome}</h1>
             <div className="mt-1 flex flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground md:justify-start">
-              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">{usuario.perfil?.nome ?? "Sem perfil"}</span>
-              {usaPin && <span className="rounded-full bg-info/10 px-2.5 py-0.5 text-xs font-semibold text-info">Acesso por PIN</span>}
+              <Selo icone={ShieldCheck}>{usuario.perfil?.nome ?? "Sem perfil"}</Selo>
+              {usaPin && <Selo icone={Key}>Acesso por PIN</Selo>}
               <span className="font-mono">{usuario.matricula ? `Matrícula ${usuario.matricula}` : usuario.email}</span>
             </div>
             {fimSessao && (

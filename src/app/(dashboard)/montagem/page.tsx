@@ -3,21 +3,24 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
-  Wrench, Play, Pause, CheckCircle2, AlertTriangle, ArrowRight, RotateCcw, Loader2, Clock, PaintBucket, ScanBarcode, Timer, Trash2, XCircle
+  Wrench, Play, Pause, Check, CheckCircle2, AlertTriangle, ArrowRight, RotateCcw, Loader2, Clock, PaintBucket, Timer, Trash2, XCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Skeleton } from "@/components/ui/skeleton";
 import { registrarLog } from "@/lib/logger";
 import { getUsuarioLogado, podeAgora, usePode } from "@/lib/auth";
 import { PageHeader } from "@/components/sgm/PageHeader";
 import { EmptyState } from "@/components/sgm/EmptyState";
+import { Carregando } from "@/components/sgm/Carregando";
+import { Dica } from "@/components/sgm/Guia";
+import { Led } from "@/components/sgm/Led";
+import { MedidorSegmentado } from "@/components/sgm/Medidor";
+import { Painel } from "@/components/sgm/Painel";
+import { PlacaChassi } from "@/components/sgm/PlacaChassi";
+import { SeletorCor } from "@/components/sgm/SeletorCor";
 import { useConfigGeral } from "@/lib/config-sistema";
 import { MOTIVOS_PAUSA } from "@/lib/constantes";
 import { formatarCronometro, formatarDuracaoMin, minutosDesde } from "@/lib/datas";
@@ -422,247 +425,294 @@ export default function MontagemPage() {
      setMotoExcluindo(null);
   }
 
-  if (loading) return (
-    <div className="p-8 flex flex-col items-center justify-center h-full space-y-4">
-        <Skeleton className="h-64 w-full rounded-2xl" />
-        <p className="text-muted-foreground animate-pulse">Sincronizando com a linha...</p>
-    </div>
-  );
+  if (loading) return <Carregando texto="Sincronizando com a linha" />;
 
   const decorridoMs = motoAtiva?.inicio_montagem ? Math.max(0, agora - new Date(motoAtiva.inicio_montagem).getTime()) : 0;
   const decorridoMin = decorridoMs / 60000;
   const atrasado = decorridoMin > config.limiteMontagemMin;
   const emRetrabalho = !!motoAtiva?.observacoes?.includes('RETRABALHO');
+  const feitos = CHECKLIST_ITENS.length - pendentesChecklist.length;
+  const pausada = !!motoAtiva && motoAtiva.status === 'pausado';
 
   return (
-      <div className="space-y-6 animate-in fade-in pb-20">
+      <div className="space-y-6 pb-20">
 
         {modo === 'fila' && (
           <>
             <PageHeader
-              icone={Wrench}
-              titulo="Linha de montagem"
-              descricao="Escolha a próxima caixa da fila ou corrija um retrabalho."
-              acoes={<Badge variant="outline" className="h-8 px-3 text-sm">{fila.length} na fila</Badge>}
+              titulo="Montagem"
+              descricao="Assuma a próxima moto da fila. Retrabalhos devolvidos pela qualidade têm prioridade."
+              acoes={
+                <div className="flex items-center gap-3 rounded-md border bg-card px-3.5 py-2">
+                  <span className="text-2xl font-semibold leading-none">{fila.length}</span>
+                  <span className="rotulo text-sutil">na fila</span>
+                </div>
+              }
             />
 
-            {motoAtiva && motoAtiva.status === 'pausado' && (
-                <div className="mb-8 animate-in slide-in-from-top-4 duration-500">
-                    <Card className="border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-900/20 shadow-xl">
-                        <CardContent className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                             <div className="flex items-center gap-4">
-                                <Clock className="w-8 h-8 text-amber-600 shrink-0"/>
-                                <div>
-                                    <h3 className="text-xl font-bold text-foreground">Produção Pausada</h3>
-                                    <p className="text-muted-foreground">{motoAtiva.modelo} - {motoAtiva.sku}</p>
-                                    <p className="text-xs text-amber-600 mt-1 font-bold">O timer continuará de onde parou ao retomar.</p>
-                                </div>
-                             </div>
-                             <Button onClick={handleRetomar} disabled={processando} className="h-12 text-lg font-bold bg-amber-600 hover:bg-amber-700 text-white">
-                                {processando ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Play className="w-5 h-5 mr-2 fill-current" />} RETOMAR
-                             </Button>
-                        </CardContent>
-                    </Card>
+            <Dica titulo="Como funciona a montagem">
+              <ol className="mt-1 grid gap-x-6 gap-y-1 sm:grid-cols-2">
+                <li><strong className="font-semibold text-foreground">1.</strong> Toque em INICIAR — a primeira da fila é a caixa mais antiga.</li>
+                <li><strong className="font-semibold text-foreground">2.</strong> Siga o checklist e escolha as cores da carenagem e do banco.</li>
+                <li><strong className="font-semibold text-foreground">3.</strong> Precisa parar? Peça a pausa: o supervisor autoriza e o tempo congela.</li>
+                <li><strong className="font-semibold text-foreground">4.</strong> FINALIZAR envia a moto para a inspeção de qualidade (E3).</li>
+              </ol>
+            </Dica>
+
+            {pausada && motoAtiva && (
+              <section className="relative overflow-hidden rounded-lg border bg-card">
+                <span aria-hidden className="faixa-sinalizacao absolute inset-x-0 top-0 h-2" />
+                <div className="flex flex-col gap-4 p-5 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-4">
+                    <span className="flex size-11 shrink-0 items-center justify-center rounded-md border border-white/10 bg-sidebar">
+                      <Led estado="atencao" piscando className="size-3.5" />
+                    </span>
+                    <div className="min-w-0 space-y-1.5">
+                      <p className="rotulo text-sutil">Produção pausada</p>
+                      <p className="text-xl font-semibold leading-tight">{motoAtiva.modelo}</p>
+                      <PlacaChassi chassi={motoAtiva.sku} tamanho="sm" />
+                      <p className="text-xs text-muted-foreground">O cronômetro continua de onde parou ao retomar.</p>
+                    </div>
+                  </div>
+                  <Button onClick={handleRetomar} disabled={processando} variant="grafite" className="h-12 px-6 text-base font-semibold">
+                    {processando ? <Loader2 className="animate-spin" /> : <Play className="fill-current" />} RETOMAR
+                  </Button>
                 </div>
+              </section>
             )}
 
             {filaRetrabalho.length > 0 && (
-                <div className="mb-8">
-                    <h3 className="text-lg font-bold text-red-600 mb-4 flex items-center gap-2">
-                        <AlertTriangle className="w-5 h-5" /> PRIORIDADE: RETRABALHO
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {filaRetrabalho.map(moto => (
-                            <Card key={moto.id} className="border-l-4 border-l-red-600 bg-red-50 dark:bg-red-900/20 shadow-lg">
-                                <CardContent className="p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                                    <div>
-                                        <Badge variant="destructive" className="mb-2 animate-pulse">CORRIGIR ERRO</Badge>
-                                        <h3 className="text-xl font-bold">{moto.modelo}</h3>
-                                        <p className="text-red-700 dark:text-red-400 font-bold mt-1">&quot;{moto.observacoes?.replace(/RETRABALHO.*?: /, '')}&quot;</p>
-                                        <p className="text-xs text-muted-foreground mt-2">Reprovado por: {moto.supervisor?.nome || '—'}{moto.montador_id !== getUsuarioLogado()?.id && moto.montador?.nome ? ` · montada por ${moto.montador.nome}` : ''}</p>
-                                    </div>
-                                    <Button onClick={() => iniciarTrabalho(moto, true)} disabled={processando || !!motoAtiva} className="bg-red-600 hover:bg-red-700 text-white font-bold h-12">
-                                        <RotateCcw className="w-5 h-5 mr-2" /> CORRIGIR
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        ))}
+              <Painel titulo="Prioridade: retrabalho" codigo="RT" meta="Devolvidas pela inspeção para ajuste" className="border-serio/60">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {filaRetrabalho.map(moto => (
+                    <div key={moto.id} className="flex flex-col gap-4 rounded-md border border-l-[3px] border-l-serio bg-background/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 space-y-1.5">
+                        <p className="text-lg font-semibold leading-tight">{moto.modelo}</p>
+                        <PlacaChassi chassi={moto.sku} tamanho="sm" />
+                        <p className="flex items-start gap-1.5 text-sm font-medium text-foreground">
+                          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-serio" aria-hidden />
+                          &quot;{moto.observacoes?.replace(/RETRABALHO.*?: /, '')}&quot;
+                        </p>
+                        <p className="text-xs text-muted-foreground">Reprovado por: {moto.supervisor?.nome || '—'}{moto.montador_id !== getUsuarioLogado()?.id && moto.montador?.nome ? ` · montada por ${moto.montador.nome}` : ''}</p>
+                      </div>
+                      <Button onClick={() => iniciarTrabalho(moto, true)} disabled={processando || !!motoAtiva} variant="grafite" className="h-12 shrink-0 font-semibold">
+                        <RotateCcw /> CORRIGIR
+                      </Button>
                     </div>
+                  ))}
                 </div>
+              </Painel>
             )}
 
-            <div className={motoAtiva && motoAtiva.status === 'pausado' ? 'opacity-40 pointer-events-none grayscale' : ''}>
-                <h3 className="text-lg font-bold text-foreground/90 mb-4 flex items-center gap-2">
-                    <Wrench className="w-5 h-5" /> Fila de Produção
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {fila.length === 0 ? (
-                    <EmptyState icone={Wrench} titulo="Nenhuma caixa aguardando" descricao="Assim que uma caixa for registrada na entrada, ela aparece aqui." className="col-span-full" />
-                ) : (
-                    fila.map((moto, idx) => (
-                    <Card key={moto.id} className="hover:border-primary/60 transition-all border-l-4 border-l-transparent hover:border-l-primary">
-                        <CardContent className="p-6">
-                            <div className="flex justify-between items-start mb-4 gap-2">
-                                <Badge variant="secondary" className="font-mono">{moto.sku}</Badge>
-                                <Badge className={cn("border-0", idx === 0 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-info/10 text-info")}>
-                                  {idx === 0 ? "PRÓXIMA" : "NOVA"}
-                                </Badge>
-                            </div>
-                            <h3 className="text-xl font-bold mb-1">{moto.modelo}</h3>
-                            <p className="text-muted-foreground text-sm">{moto.localizacao || 'Sem local'}</p>
-                            <p className="text-xs text-muted-foreground mb-6 flex items-center gap-1 mt-1"><Clock className="w-3 h-3" /> Na fila há {formatarDuracaoMin(minutosDesde(moto.created_at))}</p>
-                            <div className="flex gap-2">
-                                <Button onClick={() => iniciarTrabalho(moto, false)} disabled={processando} className="flex-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-white font-bold">
-                                    <Play className="w-4 h-4 mr-2" /> INICIAR
-                                </Button>
-                                {podeRemover && (
-                                  <Button variant="outline" size="icon" className="text-destructive" onClick={() => { setMotivoExclusao(MOTIVOS_EXCLUSAO[0]); setMotoExcluindo(moto); }} title="Remover da linha" aria-label="Remover da linha">
-                                      <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-                    ))
-                )}
-                </div>
-            </div>
+            <Painel
+              titulo="Fila de montagem"
+              codigo="E2"
+              meta="Por ordem de chegada na Entrada (E1)"
+              className={cn(pausada && "pointer-events-none opacity-50")}
+            >
+              {fila.length === 0 ? (
+                <EmptyState
+                  icone={Wrench}
+                  titulo="Nenhuma caixa aguardando"
+                  descricao="Assim que uma caixa for registrada na Entrada (E1), ela aparece aqui."
+                  compacto
+                />
+              ) : (
+                <ol className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {fila.map((moto, idx) => (
+                    <li
+                      key={moto.id}
+                      className={cn(
+                        "flex flex-col gap-3 rounded-md border bg-card p-4 transition-colors hover:border-foreground/40",
+                        idx === 0 && "border-foreground/60",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="flex items-center gap-2">
+                          <span className="flex h-6 min-w-8 items-center justify-center rounded-sm border font-mono text-xs font-semibold text-muted-foreground">
+                            {String(idx + 1).padStart(2, '0')}
+                          </span>
+                          {idx === 0 && <span className="rotulo rounded-sm bg-foreground px-1.5 py-1 text-[10px] text-background">Próxima</span>}
+                        </span>
+                        <span className="flex items-center gap-1 text-xs text-sutil">
+                          <Clock className="size-3" /> há {formatarDuracaoMin(minutosDesde(moto.created_at))}
+                        </span>
+                      </div>
+                      <div className="min-w-0 space-y-1.5">
+                        <p className="text-lg font-semibold leading-tight">{moto.modelo}</p>
+                        <PlacaChassi chassi={moto.sku} tamanho="sm" />
+                        <p className="text-xs text-sutil">{moto.localizacao || 'Sem local'}</p>
+                      </div>
+                      <div className="mt-auto flex gap-2">
+                        <Button
+                          onClick={() => iniciarTrabalho(moto, false)}
+                          disabled={processando}
+                          variant={idx === 0 ? "grafite" : "outline"}
+                          className="h-11 flex-1 font-semibold"
+                        >
+                          <Play /> INICIAR
+                        </Button>
+                        {podeRemover && (
+                          <Button variant="outline" size="icon" className="size-11 text-destructive" onClick={() => { setMotivoExclusao(MOTIVOS_EXCLUSAO[0]); setMotoExcluindo(moto); }} title="Remover da linha" aria-label="Remover da linha">
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </Painel>
           </>
         )}
 
         {modo === 'producao' && motoAtiva && (
-          <div className="max-w-4xl mx-auto">
-             <div className={cn(
-                emRetrabalho ? 'bg-primary' : atrasado ? 'bg-amber-600' : 'bg-zinc-900 dark:bg-zinc-800',
-                "text-white p-6 rounded-t-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-4 transition-colors duration-500")}>
-                <div>
-                   <p className="text-white/80 text-sm font-bold uppercase tracking-widest mb-1 flex items-center gap-2">
-                       {emRetrabalho ? <><RotateCcw className="w-4 h-4"/> CORREÇÃO EM ANDAMENTO</> :
-                        <><Play className="w-4 h-4 animate-pulse"/> EM PRODUÇÃO</>}
-                   </p>
-                   <h1 className="text-3xl font-black">{motoAtiva.modelo}</h1>
-                   <div className="flex items-center gap-2 mt-1">
-                        <ScanBarcode className="w-4 h-4 opacity-70"/>
-                        <p className="opacity-90 font-mono tracking-widest">{motoAtiva.sku}</p>
-                   </div>
+          <div className="mx-auto max-w-5xl space-y-5">
+            {/* Painel de instrumentos da moto em montagem */}
+            <section className="relative overflow-hidden rounded-lg border border-white/10 bg-sidebar text-white">
+              {emRetrabalho && <span aria-hidden className="absolute inset-x-0 top-0 h-1 bg-serio" />}
+              <div className="grid gap-5 p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center md:p-6">
+                <div className="min-w-0 space-y-2.5">
+                  <p className="flex items-center gap-2">
+                    <span className="flex h-5 min-w-7 items-center justify-center rounded-[2px] bg-white px-1 font-mono text-[10px] font-semibold text-sidebar">E2</span>
+                    <Led estado={emRetrabalho ? "serio" : "processo"} piscando={!aguardandoAutorizacao} />
+                    <span className="font-rotulo text-sm font-semibold uppercase tracking-[0.1em] text-white/85">
+                      {emRetrabalho ? "CORREÇÃO EM ANDAMENTO" : "EM PRODUÇÃO"}
+                    </span>
+                  </p>
+                  <h1 className="text-[28px] font-semibold leading-tight md:text-[32px]">{motoAtiva.modelo}</h1>
+                  <PlacaChassi chassi={motoAtiva.sku} tamanho="md" />
                 </div>
-
-                <div className="bg-white/20 backdrop-blur-md px-6 py-3 rounded-xl text-center min-w-[140px] border border-white/30" title={atrasado ? `Acima do tempo de referência (${config.limiteMontagemMin} min)` : undefined}>
-                    <span className="text-xs uppercase font-bold opacity-80 mb-1 flex items-center justify-center gap-1"><Timer className="w-3 h-3"/> Tempo</span>
-                    <span className="text-3xl font-mono font-black tracking-widest">{formatarCronometro(decorridoMs)}</span>
-                    {atrasado && <span className="block text-[10px] font-bold uppercase mt-1">Acima de {config.limiteMontagemMin} min</span>}
+                <div
+                  className="min-w-[220px] rounded-md border border-white/10 bg-white/[0.04] px-4 py-3"
+                  title={atrasado ? `Acima do tempo de referência (${config.limiteMontagemMin} min)` : undefined}
+                >
+                  <p className="flex items-center justify-between gap-3">
+                    <span className="rotulo flex items-center gap-1.5 text-white/60"><Timer className="size-3.5" /> Tempo</span>
+                    <span className="flex items-center gap-1.5 text-[11px] text-white/70">
+                      <Led estado={atrasado ? "atencao" : "bom"} className="size-2" />
+                      {atrasado ? `acima de ${config.limiteMontagemMin} min` : `ref. ${config.limiteMontagemMin} min`}
+                    </span>
+                  </p>
+                  <p className="mt-1.5 font-mono text-[40px] font-semibold leading-none tracking-wider">{formatarCronometro(decorridoMs)}</p>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-[1px] bg-white/10">
+                    <span
+                      className={cn("block h-full transition-[width] duration-700", atrasado ? "bg-warning" : "bg-white/80")}
+                      style={{ width: `${Math.min(100, (decorridoMin / Math.max(1, config.limiteMontagemMin)) * 100)}%` }}
+                    />
+                  </div>
                 </div>
-             </div>
+              </div>
+            </section>
 
-            <Card className="relative rounded-t-none border-t-0 bg-card shadow-xl">
-              <CardContent className="p-6 md:p-8 space-y-8">
+            <section className="relative overflow-hidden rounded-lg border bg-card">
+              {aguardandoAutorizacao && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-start bg-card/95 p-6 pt-16 text-center backdrop-blur-sm">
+                  <span className="mb-4 flex size-16 items-center justify-center rounded-md border border-white/10 bg-sidebar">
+                    <Led estado="atencao" piscando className="size-5 rounded-[3px]" />
+                  </span>
+                  <h2 className="text-2xl font-semibold text-foreground">Solicitação Enviada!</h2>
+                  <p className="mt-1 text-lg text-muted-foreground">Aguarde a liberação do supervisor.</p>
+                  <p className="mt-2 text-xs text-sutil">O cronômetro para assim que a pausa for autorizada.</p>
+                  <Button variant="outline" className="mt-6" onClick={cancelarSolicitacaoPausa} disabled={processando}>
+                    <XCircle /> Cancelar solicitação
+                  </Button>
+                </div>
+              )}
 
-                {aguardandoAutorizacao && (
-                    <div className="absolute inset-0 bg-white/90 dark:bg-black/90 z-20 flex flex-col items-center justify-center rounded-b-xl backdrop-blur-sm animate-in fade-in p-6 text-center">
-                        <Loader2 className="w-16 h-16 text-primary animate-spin mb-4" />
-                        <h2 className="text-2xl font-bold text-foreground">Solicitação Enviada!</h2>
-                        <p className="text-muted-foreground text-lg">Aguarde a liberação do supervisor...</p>
-                        <p className="text-xs text-muted-foreground mt-2">O timer será pausado assim que autorizado.</p>
-                        <Button variant="outline" className="mt-6" onClick={cancelarSolicitacaoPausa} disabled={processando}>
-                            <XCircle className="w-4 h-4 mr-2" /> Cancelar solicitação
-                        </Button>
-                    </div>
-                )}
-
+              <div className="space-y-7 p-5 md:p-7">
                 {emRetrabalho && (
-                    <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-900/50 animate-in slide-in-from-top-2">
-                        <p className="font-bold text-red-700 dark:text-red-400 flex items-center gap-2"><AlertTriangle className="w-5 h-5"/> O que precisa ser corrigido:</p>
-                        <p className="text-lg mt-1 pl-7 font-medium">{motoAtiva.observacoes?.replace('RETRABALHO:', '')}</p>
-                    </div>
+                  <div className="rounded-md border border-l-[3px] border-l-serio bg-background/60 p-4">
+                    <p className="rotulo flex items-center gap-2 text-sutil"><AlertTriangle className="size-4 text-serio" /> O que precisa ser corrigido</p>
+                    <p className="mt-2 text-lg font-medium">{motoAtiva.observacoes?.replace('RETRABALHO:', '')}</p>
+                  </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row justify-between items-center border-b border-border pb-6 gap-4">
-                   <h2 className="text-xl font-bold flex items-center gap-2">
-                     <CheckCircle2 className="w-6 h-6 text-green-600"/> Checklist de Segurança
-                     <Badge variant="secondary" className="ml-1">{CHECKLIST_ITENS.length - pendentesChecklist.length}/{CHECKLIST_ITENS.length}</Badge>
-                   </h2>
-                   <div className="flex gap-2 w-full sm:w-auto">
-                      <Button variant="outline" onClick={abrirSolicitacaoPausa} className="flex-1 sm:flex-none text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-900/50 dark:hover:bg-amber-950/30">
-                         <Pause className="w-4 h-4 mr-2" /> PAUSAR
-                      </Button>
-                      <Button variant="secondary" onClick={handleMarcarTudo} className="flex-1 sm:flex-none">
-                         MARCAR TUDO
-                      </Button>
-                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {CHECKLIST_ITENS.map((item) => (
-                    <div key={item} role="checkbox" aria-checked={!!checklist[item]} tabIndex={0}
-                      onClick={() => toggleCheck(item)}
-                      onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleCheck(item); } }}
-                      className={`flex items-center space-x-3 p-4 rounded-xl border-2 transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring ${checklist[item] ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-border hover:border-slate-300'}`}>
-                      <Checkbox checked={!!checklist[item]} tabIndex={-1} className="data-[state=checked]:bg-green-500 w-5 h-5 pointer-events-none" />
-                      <span className="text-sm font-medium select-none">{item}</span>
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="rotulo text-sutil">Checklist de montagem</p>
+                      <p className="text-sm text-muted-foreground">
+                        <span className="font-semibold text-foreground">{feitos} de {CHECKLIST_ITENS.length}</span> itens conferidos
+                      </p>
                     </div>
-                  ))}
-                </div>
-
-                <div className="p-6 bg-muted/50 rounded-xl border border-border">
-                    <h3 className="text-sm font-bold text-muted-foreground uppercase mb-4 flex items-center gap-2"><PaintBucket className="w-4 h-4"/> Acabamento Final</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                            <label className="text-sm font-bold">Cor da Carenagem</label>
-                            <Select value={corMotoInput} onValueChange={escolherCorMoto}>
-                                <SelectTrigger className="h-12 bg-card"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                                <SelectContent className="max-h-[300px]">
-                                    {config.coresCarenagem.map(c => (
-                                      <SelectItem key={c.nome} value={c.nome}>
-                                        <span className="flex items-center gap-2">
-                                          <span className="w-3 h-3 rounded-full border border-slate-300 shrink-0" style={{ backgroundColor: c.hex }} />
-                                          {c.descricao || c.nome}
-                                        </span>
-                                      </SelectItem>
-                                    ))}
-                                    {corMotoInput && !config.coresCarenagem.some(c => c.nome === corMotoInput) && (
-                                      <SelectItem value={corMotoInput}>{corMotoInput}</SelectItem>
-                                    )}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-sm font-bold">Cor do Banco</label>
-                            <Select value={corBancoInput} onValueChange={escolherCorBanco}>
-                                <SelectTrigger className="h-12 bg-card"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                                <SelectContent className="max-h-[300px]">
-                                    {config.coresBanco.map(c => (
-                                      <SelectItem key={c.nome} value={c.nome}>
-                                        <span className="flex items-center gap-2">
-                                          <span className="w-3 h-3 rounded-full border border-slate-300 shrink-0" style={{ backgroundColor: c.hex }} />
-                                          {c.descricao || c.nome}
-                                        </span>
-                                      </SelectItem>
-                                    ))}
-                                    {corBancoInput && !config.coresBanco.some(c => c.nome === corBancoInput) && (
-                                      <SelectItem value={corBancoInput}>{corBancoInput}</SelectItem>
-                                    )}
-                                </SelectContent>
-                            </Select>
-                        </div>
+                    <div className="flex w-full gap-2 sm:w-auto">
+                      <Button variant="outline" onClick={abrirSolicitacaoPausa} className="h-11 flex-1 font-semibold sm:flex-none">
+                        <Pause className="text-warning" /> PAUSAR
+                      </Button>
+                      <Button variant="secondary" onClick={handleMarcarTudo} className="h-11 flex-1 font-semibold sm:flex-none">
+                        MARCAR TUDO
+                      </Button>
                     </div>
+                  </div>
+                  <MedidorSegmentado
+                    valor={feitos}
+                    total={CHECKLIST_ITENS.length}
+                    rotulo="Itens do checklist conferidos"
+                    altura="h-2"
+                    legenda={false}
+                  />
+                  <ol className="grid gap-2 md:grid-cols-2">
+                    {CHECKLIST_ITENS.map((item, i) => {
+                      const feito = !!checklist[item];
+                      return (
+                        <li key={item}>
+                          <div
+                            role="checkbox"
+                            aria-checked={feito}
+                            tabIndex={0}
+                            onClick={() => toggleCheck(item)}
+                            onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleCheck(item); } }}
+                            className={cn(
+                              "flex min-h-14 cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                              feito ? "border-success/60 bg-success/[0.07]" : "bg-card hover:border-foreground/40",
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "flex size-8 shrink-0 items-center justify-center rounded-sm font-mono text-xs font-semibold",
+                                feito ? "bg-success text-white" : "border text-muted-foreground",
+                              )}
+                            >
+                              {feito ? <Check className="size-4" /> : String(i + 1).padStart(2, '0')}
+                            </span>
+                            <span className="select-none text-sm font-medium">{item}</span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
                 </div>
 
-                <div className="pt-2 border-t border-border">
-                   <Button onClick={abrirFinalizacao} disabled={processando} className="w-full h-16 text-lg font-bold bg-green-600 hover:bg-green-700 shadow-lg shadow-green-600/20 transition-all hover:scale-[1.01]">
-                      {emRetrabalho ? 'CORREÇÃO FINALIZADA' : 'FINALIZAR MONTAGEM'} <ArrowRight className="ml-2 w-6 h-6" />
-                   </Button>
+                <div className="space-y-5 border-t pt-6">
+                  <p className="rotulo flex items-center gap-2 text-sutil"><PaintBucket className="size-4" /> Acabamento final</p>
+                  <SeletorCor rotulo="Cor da carenagem" cores={config.coresCarenagem} valor={corMotoInput} aoEscolher={escolherCorMoto} />
+                  <SeletorCor rotulo="Cor do banco" cores={config.coresBanco} valor={corBancoInput} aoEscolher={escolherCorBanco} />
                 </div>
-              </CardContent>
-            </Card>
+
+                <div className="space-y-2 border-t pt-6">
+                  <Button onClick={abrirFinalizacao} disabled={processando} className="h-16 w-full text-lg font-semibold">
+                    {emRetrabalho ? 'CORREÇÃO FINALIZADA' : 'FINALIZAR MONTAGEM'} <ArrowRight className="size-6" />
+                  </Button>
+                  <p className="text-center text-xs text-sutil">
+                    {pendentesChecklist.length > 0
+                      ? `Faltam ${pendentesChecklist.length} item(ns) do checklist.`
+                      : !corMotoInput || !corBancoInput
+                        ? "Falta escolher as cores."
+                        : "Tudo pronto: a moto segue para a inspeção de qualidade (E3)."}
+                  </p>
+                </div>
+              </div>
+            </section>
           </div>
         )}
 
         {/* SOLICITAÇÃO DE PAUSA */}
         <Dialog open={dialogoPausa} onOpenChange={(o) => !processando && setDialogoPausa(o)}>
-          <DialogContent className="bg-card border-border">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-amber-600"><Pause className="w-5 h-5" /> Solicitar Pausa</DialogTitle>
-              <DialogDescription>O supervisor precisa autorizar. O timer para somente após a aprovação.</DialogDescription>
+              <DialogTitle className="flex items-center gap-2"><Pause className="size-5 text-warning" /> Solicitar pausa</DialogTitle>
+              <DialogDescription>O supervisor precisa autorizar. O cronômetro para somente após a aprovação.</DialogDescription>
             </DialogHeader>
             <div className="grid grid-cols-2 gap-2">
               {[...MOTIVOS_PAUSA, 'Outro'].map(m => (
@@ -670,7 +720,11 @@ export default function MontagemPage() {
                   key={m}
                   type="button"
                   onClick={() => setMotivoPausa(m)}
-                  className={cn("h-14 rounded-xl border-2 text-sm font-bold transition-colors px-2", motivoPausa === m ? "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" : "border-border hover:border-amber-300")}
+                  aria-pressed={motivoPausa === m}
+                  className={cn(
+                    "h-14 rounded-md border px-2 text-sm font-semibold transition-colors",
+                    motivoPausa === m ? "border-foreground bg-foreground text-background" : "bg-card hover:border-foreground/40",
+                  )}
                 >
                   {m}
                 </button>
@@ -681,8 +735,8 @@ export default function MontagemPage() {
             )}
             <DialogFooter>
               <Button variant="ghost" onClick={() => setDialogoPausa(false)} disabled={processando}>Cancelar</Button>
-              <Button onClick={enviarSolicitacaoPausa} disabled={processando || !motivoPausa || (motivoPausa === 'Outro' && !motivoPausaOutro.trim())} className="bg-amber-600 hover:bg-amber-700 text-white font-bold">
-                {processando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Pause className="w-4 h-4 mr-2" />} Enviar Solicitação
+              <Button variant="grafite" onClick={enviarSolicitacaoPausa} disabled={processando || !motivoPausa || (motivoPausa === 'Outro' && !motivoPausaOutro.trim())} className="font-semibold">
+                {processando ? <Loader2 className="animate-spin" /> : <Pause />} Enviar Solicitação
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -690,23 +744,26 @@ export default function MontagemPage() {
 
         {/* CONFIRMAÇÃO DE FINALIZAÇÃO */}
         <Dialog open={dialogoFinalizar} onOpenChange={(o) => !processando && setDialogoFinalizar(o)}>
-          <DialogContent className="bg-card border-border">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-green-600"><CheckCircle2 className="w-5 h-5" /> Finalizar montagem?</DialogTitle>
-              <DialogDescription>A moto seguirá para a Inspeção de Qualidade.</DialogDescription>
+              <DialogTitle className="flex items-center gap-2"><CheckCircle2 className="size-5 text-success" /> Finalizar montagem?</DialogTitle>
+              <DialogDescription>A moto seguirá para a inspeção de qualidade (E3).</DialogDescription>
             </DialogHeader>
             {motoAtiva && (
-              <div className="bg-muted/50 p-4 rounded-xl border border-border text-sm space-y-1">
-                <p className="font-black text-lg text-foreground">{motoAtiva.modelo}</p>
-                <p className="font-mono text-muted-foreground">{motoAtiva.sku}</p>
-                <p>Carenagem: <strong>{corMotoInput}</strong> · Banco: <strong>{corBancoInput}</strong></p>
-                <p>Tempo: <strong>{formatarCronometro(decorridoMs)}</strong></p>
+              <div className="space-y-3 rounded-md border bg-background/60 p-4 text-sm">
+                <p className="text-lg font-semibold text-foreground">{motoAtiva.modelo}</p>
+                <PlacaChassi chassi={motoAtiva.sku} tamanho="sm" />
+                <dl className="grid grid-cols-3 gap-3 pt-1">
+                  <div><dt className="rotulo text-sutil">Carenagem</dt><dd className="mt-1 font-medium">{corMotoInput}</dd></div>
+                  <div><dt className="rotulo text-sutil">Banco</dt><dd className="mt-1 font-medium">{corBancoInput}</dd></div>
+                  <div><dt className="rotulo text-sutil">Tempo</dt><dd className="mt-1 font-mono font-semibold">{formatarCronometro(decorridoMs)}</dd></div>
+                </dl>
               </div>
             )}
             <DialogFooter>
               <Button variant="ghost" onClick={() => setDialogoFinalizar(false)} disabled={processando}>Voltar</Button>
-              <Button onClick={finalizarMontagem} disabled={processando} className="bg-green-600 hover:bg-green-700 text-white font-bold">
-                {processando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRight className="w-4 h-4 mr-2" />} Enviar para Qualidade
+              <Button onClick={finalizarMontagem} disabled={processando} className="font-semibold">
+                {processando ? <Loader2 className="animate-spin" /> : <ArrowRight />} Enviar para Qualidade
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -714,18 +771,18 @@ export default function MontagemPage() {
 
         {/* REMOÇÃO DA FILA */}
         <Dialog open={!!motoExcluindo} onOpenChange={(o) => !o && !processando && setMotoExcluindo(null)}>
-          <DialogContent className="bg-card border-border">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-red-600"><Trash2 className="w-5 h-5" /> Remover moto da linha</DialogTitle>
+              <DialogTitle className="flex items-center gap-2"><Trash2 className="size-5 text-destructive" /> Remover moto da linha</DialogTitle>
               <DialogDescription>O registro é apagado e a remoção fica registrada na auditoria.</DialogDescription>
             </DialogHeader>
             {motoExcluindo && (
               <div className="space-y-3">
-                <div className="bg-muted/50 p-3 rounded-xl border border-border">
-                  <p className="font-bold">{motoExcluindo.modelo}</p>
-                  <p className="font-mono text-sm text-muted-foreground">{motoExcluindo.sku}</p>
+                <div className="space-y-1.5 rounded-md border bg-background/60 p-3">
+                  <p className="font-semibold">{motoExcluindo.modelo}</p>
+                  <PlacaChassi chassi={motoExcluindo.sku} tamanho="sm" />
                 </div>
-                <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">Motivo</label>
+                <label className="rotulo text-sutil">Motivo</label>
                 <Select value={motivoExclusao} onValueChange={setMotivoExclusao}>
                   <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -737,7 +794,7 @@ export default function MontagemPage() {
             <DialogFooter>
               <Button variant="ghost" onClick={() => setMotoExcluindo(null)} disabled={processando}>Cancelar</Button>
               <Button variant="destructive" onClick={handleExcluirMoto} disabled={processando}>
-                {processando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />} Remover
+                {processando ? <Loader2 className="animate-spin" /> : <Trash2 />} Remover
               </Button>
             </DialogFooter>
           </DialogContent>

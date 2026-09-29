@@ -142,7 +142,8 @@ async function sincronizar(sessao: Session | null) {
     definir({ status: "anonimo", usuario: null, offline: true });
     return;
   }
-  if (!data) {
+  const perfilRaw = (Array.isArray(data) ? data[0] : data) as RespostaPerfil | null | undefined;
+  if (!perfilRaw || !perfilRaw.funcionario_id) {
     // Sessão válida, mas sem cadastro ativo: acesso desativado ou sem vínculo com funcionário.
     const tinhaUsuario = estado.usuario !== null;
     await supabase.auth.signOut({ scope: "local" });
@@ -151,7 +152,7 @@ async function sincronizar(sessao: Session | null) {
     if (tinhaUsuario) emitir("desativado");
     return;
   }
-  const usuario = montarUsuario(data as RespostaPerfil, sessao);
+  const usuario = montarUsuario(perfilRaw, sessao);
   const anterior = estado.usuario;
   gravarCache(usuario);
   definir({ status: "autenticado", usuario, offline: false });

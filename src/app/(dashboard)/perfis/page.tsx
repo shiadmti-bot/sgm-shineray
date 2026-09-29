@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PageHeader } from "@/components/sgm/PageHeader";
 import { ConfirmDialog } from "@/components/sgm/ConfirmDialog";
 import { Carregando } from "@/components/sgm/Carregando";
+import { Selo } from "@/components/sgm/Selo";
 import { supabase } from "@/lib/supabase";
 import { registrarLog } from "@/lib/logger";
 import { GRUPOS_PERMISSAO, PERMISSOES, rotuloPermissao, type Permissao } from "@/lib/rbac/permissoes";
@@ -176,8 +177,8 @@ export default function PerfisPage() {
                     <CardDescription className="mt-1 line-clamp-2">{p.descricao || "Sem descrição."}</CardDescription>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
-                    {p.sistema && <span className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground"><Lock className="size-3" /> Padrão</span>}
-                    {p.acesso_pin && <span className="flex items-center gap-1 rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-info"><KeyRound className="size-3" /> PIN</span>}
+                    {p.sistema && <Selo icone={Lock}>Padrão</Selo>}
+                    {p.acesso_pin && <Selo icone={KeyRound}>PIN</Selo>}
                   </div>
                 </div>
               </CardHeader>

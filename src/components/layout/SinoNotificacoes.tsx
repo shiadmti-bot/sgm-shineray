@@ -17,8 +17,8 @@ import { marcarComoLida, marcarTodasComoLidas, useNotificacoes, type Notificacao
 
 export const ICONES_NOTIFICACAO: Record<string, { icone: LucideIcon; cor: string }> = {
   pausa: { icone: PauseCircle, cor: "bg-warning/10 text-warning" },
-  retrabalho: { icone: RotateCcw, cor: "bg-destructive/10 text-destructive" },
-  avaria: { icone: AlertOctagon, cor: "bg-orange-500/10 text-orange-600 dark:text-orange-400" },
+  retrabalho: { icone: RotateCcw, cor: "bg-serio/15 text-serio" },
+  avaria: { icone: AlertOctagon, cor: "bg-destructive/10 text-destructive" },
   reparo: { icone: ClipboardCheck, cor: "bg-success/10 text-success" },
   inventario: { icone: Boxes, cor: "bg-info/10 text-info" },
   info: { icone: Info, cor: "bg-muted text-muted-foreground" },

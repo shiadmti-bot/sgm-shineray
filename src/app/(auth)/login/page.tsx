@@ -4,9 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
-import {
-  ArrowRight, BellRing, Boxes, Camera, ChevronLeft, Delete, Eye, EyeOff, History, KeyRound, Loader2, LogIn, ShieldCheck, Wrench,
-} from "lucide-react";
+import { ArrowRight, ChevronLeft, Delete, Eye, EyeOff, KeyRound, Loader2, LogIn, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,12 +23,13 @@ const MENSAGENS_MOTIVO: Record<string, string> = {
   saiu: "Você saiu do sistema.",
 };
 
-const NOVIDADES = [
-  { icone: ShieldCheck, texto: "Perfis de acesso personalizáveis" },
-  { icone: History, texto: "Prontuário completo de cada chassi" },
-  { icone: Boxes, texto: "Inventário do pátio por leitura" },
-  { icone: Camera, texto: "Fotos nas avarias e na qualidade" },
-  { icone: BellRing, texto: "Central de notificações" },
+const ESTACOES = [
+  { codigo: "E1", titulo: "Entrada", texto: "Leitura do chassi na chegada da caixa." },
+  { codigo: "E2", titulo: "Montagem", texto: "Checklist, cores e tempo de cada moto." },
+  { codigo: "E3", titulo: "Qualidade", texto: "Inspeção final: aprova, devolve ou segrega." },
+  { codigo: "AV", titulo: "Avarias", texto: "Reparo e nova inspeção.", desvio: true },
+  { codigo: "E4", titulo: "Etiquetagem", texto: "Etiqueta impressa e envio ao estoque." },
+  { codigo: "E5", titulo: "Estoque", texto: "Pátio de prontas, expedição e inventário." },
 ];
 
 function lerLembrado(): string {
@@ -222,53 +221,76 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Ambientação */}
-      <div className="relative hidden w-[46%] flex-col justify-between overflow-hidden bg-zinc-950 p-12 text-white lg:flex">
-        <div className="pointer-events-none absolute -right-32 -top-32 size-[28rem] rounded-full bg-red-600/25 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-40 -left-24 size-[26rem] rounded-full bg-red-900/30 blur-3xl" />
-        <div className="relative flex items-center gap-3">
-          <Image src="/shineray-logo.png" alt="SGM by Sabel" width={56} height={56} className="size-14 rounded-full" priority />
+      {/* Painel da linha: ensina o fluxo antes mesmo de entrar */}
+      <aside className="fundo-tecnico-escuro relative hidden w-[44%] max-w-[640px] flex-col justify-between bg-sidebar p-10 text-sidebar-foreground lg:flex xl:p-12">
+        <div className="flex items-center gap-3">
+          <Image src="/shineray-logo.png" alt="SGM by Sabel" width={48} height={48} className="size-12 rounded-full ring-1 ring-white/15" priority />
           <div className="leading-tight">
-            <p className="text-lg font-bold">SGM</p>
-            <p className="text-xs text-white/60">Shineray by Sabel</p>
+            <p className="flex items-center gap-2">
+              <span className="font-rotulo text-xl font-bold tracking-wide text-white">SGM</span>
+              <span className="rounded-[2px] bg-primary px-1 font-mono text-[11px] font-semibold text-white">V2</span>
+            </p>
+            <p className="text-xs text-sidebar-muted">Sistema de Gestão de Montagem · Shineray by Sabel</p>
           </div>
-          <span className="ml-2 rounded-full border border-white/15 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-white/80">V2</span>
         </div>
-        <div className="relative space-y-6">
-          <h1 className="text-5xl font-black leading-[1.05] tracking-tight">
-            Gestão de montagem,
-            <br />
-            <span className="text-red-500">do recebimento à expedição.</span>
-          </h1>
-          <ul className="space-y-3 text-white/80">
-            {NOVIDADES.map(({ icone: Icone, texto }) => (
-              <li key={texto} className="flex items-center gap-3">
-                <span className="flex size-8 items-center justify-center rounded-lg bg-white/10">
-                  <Icone className="size-4 text-red-400" />
+
+        <div className="space-y-7">
+          <div className="space-y-2">
+            <p className="rotulo text-sidebar-muted">O caminho de cada moto</p>
+            <p className="max-w-md text-2xl font-semibold leading-snug text-white">
+              Da caixa recebida à moto expedida, cada chassi passa por cinco estações.
+            </p>
+          </div>
+          <ol className="relative space-y-1">
+            <span aria-hidden className="absolute bottom-4 left-[19px] top-4 w-px bg-white/15" />
+            {ESTACOES.map((e) => (
+              <li key={e.codigo} className={cn("relative flex items-start gap-4 py-2", e.desvio && "pl-8")}>
+                <span
+                  className={cn(
+                    "relative z-10 flex h-7 min-w-10 items-center justify-center rounded-[3px] border bg-sidebar px-1 font-mono text-[11px] font-semibold text-white",
+                    e.desvio ? "border-dashed border-white/35" : "border-white/30",
+                  )}
+                >
+                  {e.codigo}
                 </span>
-                {texto}
+                <span className="min-w-0 pt-0.5">
+                  <span className="block text-sm font-semibold text-white">{e.titulo}</span>
+                  <span className="block text-sm text-sidebar-foreground">{e.texto}</span>
+                </span>
               </li>
             ))}
-          </ul>
+          </ol>
         </div>
-        <p className="relative text-xs text-white/40">Shineray by Sabel · Sistema de Gestão de Montagem</p>
-      </div>
 
-      {/* Formulários */}
-      <div className="flex flex-1 items-center justify-center p-6 sm:p-12">
-        <div className="w-full max-w-sm space-y-8">
+        <p className="max-w-md text-xs leading-relaxed text-sidebar-muted">
+          Tudo fica no prontuário do chassi: quem montou, quanto tempo levou e por onde a moto passou.
+        </p>
+      </aside>
+
+      {/* Identificação */}
+      <main className="flex flex-1 items-center justify-center p-6 sm:p-12">
+        <div className="w-full max-w-sm space-y-7">
           <div className="space-y-2">
-            <Image src="/shineray-logo.png" alt="SGM by Sabel" width={72} height={72} className="mb-6 size-[72px] rounded-full lg:hidden" priority />
-            <h2 className="text-3xl font-bold tracking-tight">Entrar</h2>
-            <p className="text-sm text-muted-foreground">Use sua matrícula (ou e-mail) e senha. Na linha de montagem, use o PIN.</p>
+            <div className="mb-6 flex items-center gap-3 lg:hidden">
+              <Image src="/shineray-logo.png" alt="SGM by Sabel" width={48} height={48} className="size-12 rounded-full" priority />
+              <p className="flex items-center gap-2">
+                <span className="font-rotulo text-xl font-bold tracking-wide">SGM</span>
+                <span className="rounded-[2px] bg-primary px-1 font-mono text-[11px] font-semibold text-primary-foreground">V2</span>
+              </p>
+            </div>
+            <p className="rotulo text-sutil">Acesso ao sistema</p>
+            <h1 className="text-[28px] font-semibold leading-tight">Identifique-se</h1>
+            <p className="text-sm text-muted-foreground">
+              No escritório, use matrícula (ou e-mail) e senha. Nos tablets da linha, use o PIN de 4 números.
+            </p>
           </div>
 
           {motivo && MENSAGENS_MOTIVO[motivo] && (
-            <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">{MENSAGENS_MOTIVO[motivo]}</div>
+            <div className="rounded-md border border-l-[3px] border-l-warning bg-card px-4 py-3 text-sm text-foreground">{MENSAGENS_MOTIVO[motivo]}</div>
           )}
 
           {sessaoAtiva && (
-            <div className="space-y-2 rounded-xl border bg-card p-4">
+            <div className="space-y-2 rounded-md border bg-card p-4">
               <button
                 type="button"
                 onClick={() => irParaSistema(telaInicial(usuario), usuario.trocarSenha)}
@@ -292,7 +314,7 @@ export default function LoginPage() {
           )}
 
           {/* Alternância Senha / PIN */}
-          <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1" role="tablist" aria-label="Forma de acesso">
+          <div className="grid grid-cols-2 gap-1 rounded-md border bg-card p-1" role="tablist" aria-label="Forma de acesso">
             {([
               { valor: "senha", rotulo: "Senha", icone: KeyRound },
               { valor: "pin", rotulo: "PIN da linha", icone: Wrench },
@@ -304,8 +326,8 @@ export default function LoginPage() {
                 aria-selected={modo === valor}
                 onClick={() => trocarModo(valor)}
                 className={cn(
-                  "alvo-toque flex items-center justify-center gap-2 rounded-lg text-sm font-semibold transition-colors",
-                  modo === valor ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground",
+                  "alvo-toque flex items-center justify-center gap-2 rounded-sm font-rotulo text-[15px] font-semibold uppercase tracking-[0.06em] transition-colors",
+                  modo === valor ? "bg-foreground text-background" : "text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
               >
                 <Icone className="size-4" /> {rotulo}
@@ -324,7 +346,7 @@ export default function LoginPage() {
                   placeholder="Ex.: 2001 ou nome@empresa.com"
                   value={identificador}
                   onChange={(e) => setIdentificador(e.target.value)}
-                  className="h-12"
+                  className="h-12 bg-card"
                 />
               </div>
               <div className="space-y-2">
@@ -337,12 +359,12 @@ export default function LoginPage() {
                     placeholder="••••••••"
                     value={senha}
                     onChange={(e) => setSenha(e.target.value)}
-                    className="h-12 pr-12"
+                    className="h-12 bg-card pr-12"
                   />
                   <button
                     type="button"
                     onClick={() => setMostrarSenha((v) => !v)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground hover:text-foreground"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-2 text-muted-foreground hover:text-foreground"
                     aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
                   >
                     {mostrarSenha ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
@@ -350,50 +372,63 @@ export default function LoginPage() {
                 </div>
               </div>
               <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-muted-foreground">
-                <input type="checkbox" className="size-4 accent-[hsl(var(--primary))]" checked={lembrar} onChange={(e) => setLembrar(e.target.checked)} />
+                <input type="checkbox" className="size-4 accent-[hsl(var(--foreground))]" checked={lembrar} onChange={(e) => setLembrar(e.target.checked)} />
                 Lembrar meu usuário neste dispositivo
               </label>
               <Button type="submit" className="h-12 w-full text-base font-semibold" disabled={carregando}>
                 {carregando ? <Loader2 className="animate-spin" /> : <>Entrar <ArrowRight /></>}
               </Button>
-              <p className="text-center text-xs text-muted-foreground">Esqueceu a senha? Peça ao gestor para redefinir na tela Equipe.</p>
+              <p className="text-xs text-sutil">Esqueceu a senha? Peça ao gestor para redefinir na tela Equipe.</p>
             </form>
           ) : (
-            <div className="mx-auto w-full max-w-xs space-y-6">
-              <div className="flex items-center justify-between">
-                {etapaPin === "pin" ? (
-                  <button
-                    type="button"
-                    className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
-                    onClick={voltarParaMatricula}
-                  >
-                    <ChevronLeft className="size-4" /> Matrícula {matricula}
-                  </button>
-                ) : (
-                  <span className="text-sm font-medium text-muted-foreground">1. Digite sua matrícula</span>
-                )}
-                {etapaPin === "pin" && <span className="text-sm font-medium text-muted-foreground">2. PIN</span>}
-              </div>
-
-              <div className="flex h-20 items-center justify-center rounded-2xl bg-zinc-950 font-mono text-4xl font-bold tracking-[0.4em] text-white shadow-inner">
-                {etapaPin === "matricula"
-                  ? matricula || <span className="text-white/20">0000</span>
-                  : (
-                    <span className="flex gap-4">
-                      {[0, 1, 2, 3].map((i) => (
-                        <span key={i} className={cn("size-4 rounded-full", i < pin.length ? "bg-red-500" : "bg-white/20")} />
-                      ))}
-                    </span>
+            <div className="mx-auto w-full max-w-xs space-y-5">
+              <ol className="grid grid-cols-2 gap-2 text-xs">
+                <li
+                  className={cn(
+                    "flex items-center gap-2 rounded-sm border px-2.5 py-2",
+                    etapaPin === "matricula" ? "border-foreground bg-card font-semibold text-foreground" : "text-sutil",
                   )}
+                >
+                  <span className="flex size-5 items-center justify-center rounded-[2px] bg-foreground font-mono text-[10px] text-background">1</span>
+                  {etapaPin === "pin" ? (
+                    <button type="button" onClick={voltarParaMatricula} className="flex min-w-0 items-center gap-1 hover:text-foreground">
+                      <ChevronLeft className="size-3.5 shrink-0" /> <span className="truncate font-mono">{matricula}</span>
+                    </button>
+                  ) : (
+                    "Matrícula"
+                  )}
+                </li>
+                <li
+                  className={cn(
+                    "flex items-center gap-2 rounded-sm border px-2.5 py-2",
+                    etapaPin === "pin" ? "border-foreground bg-card font-semibold text-foreground" : "text-sutil",
+                  )}
+                >
+                  <span className="flex size-5 items-center justify-center rounded-[2px] bg-foreground font-mono text-[10px] text-background">2</span>
+                  PIN (4 números)
+                </li>
+              </ol>
+
+              {/* Visor do terminal */}
+              <div className="flex h-20 items-center justify-center rounded-md border border-white/10 bg-sidebar px-4 font-mono text-4xl font-semibold tracking-[0.35em] text-white">
+                {etapaPin === "matricula" ? (
+                  matricula || <span className="text-white/20">0000</span>
+                ) : (
+                  <span className="flex gap-3" aria-label={`${pin.length} de 4 números digitados`}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <span key={i} className={cn("size-4 rounded-[3px]", i < pin.length ? "bg-primary" : "bg-white/15")} />
+                    ))}
+                  </span>
+                )}
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2.5">
                 {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
                   <TeclaNumerica key={n} onClick={() => digitar(n)} disabled={carregando}>{n}</TeclaNumerica>
                 ))}
                 <div />
                 <TeclaNumerica onClick={() => digitar("0")} disabled={carregando}>0</TeclaNumerica>
-                <TeclaNumerica onClick={apagar} disabled={carregando} aria-label="Apagar" className="text-primary">
+                <TeclaNumerica onClick={apagar} disabled={carregando} aria-label="Apagar">
                   <Delete className="size-6" />
                 </TeclaNumerica>
               </div>
@@ -407,10 +442,11 @@ export default function LoginPage() {
                   {carregando ? <Loader2 className="size-5 animate-spin text-primary" /> : "O acesso é liberado ao digitar o 4º número."}
                 </div>
               )}
+              <p className="text-center text-xs text-sutil">Também funciona pelo teclado: números, Enter para avançar e Esc para voltar.</p>
             </div>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
@@ -422,7 +458,7 @@ function TeclaNumerica({ className, ...props }: React.ComponentProps<"button">) 
     <button
       type="button"
       className={cn(
-        "flex h-16 items-center justify-center rounded-xl border border-b-4 bg-card text-2xl font-bold text-foreground transition-all hover:bg-accent active:translate-y-0.5 active:border-b disabled:opacity-50",
+        "flex h-16 items-center justify-center rounded-md border border-b-[3px] border-foreground/15 border-b-foreground/30 bg-card font-mono text-2xl font-semibold text-foreground transition-all hover:bg-accent active:translate-y-px active:border-b disabled:opacity-50",
         className,
       )}
       {...props}

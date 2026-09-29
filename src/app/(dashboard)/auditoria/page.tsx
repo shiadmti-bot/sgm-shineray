@@ -18,7 +18,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { format, subDays } from "date-fns";
 import { lerDetalhesLog } from "@/lib/logger";
-import { rotuloAcao } from "@/lib/eventos";
+import { estacaoDaAcao, rotuloAcao } from "@/lib/eventos";
+import { cn } from "@/lib/utils";
 import { dataInputParaISO } from "@/lib/datas";
 
 // Tipo alinhado com o banco atual
@@ -161,30 +162,26 @@ export default function AuditoriaPage() {
     )
   );
 
-  // Helper Visual Expandido
+  // Ícone de cada tipo de evento (a cor só sinaliza exceções: falha de acesso, exclusão, reprovação)
   const getActionStyle = (acao: string) => {
-      if (acao === 'LOGIN_FALHA') return { icon: ShieldX, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
-      if (acao.includes('LOGIN')) return { icon: LogIn, color: 'text-info', bg: 'bg-info/10' };
-      if (acao.includes('LOGOUT')) return { icon: LogOut, color: 'text-muted-foreground', bg: 'bg-muted' };
-      if (acao === 'CONFIGURACAO') return { icon: Settings, color: 'text-foreground/90', bg: 'bg-muted' };
-      if (acao === 'SENHA_ALTERADA') return { icon: KeyRound, color: 'text-violet-600', bg: 'bg-violet-100 dark:bg-violet-900/30' };
-      if (acao === 'ARQUIVAMENTO' || acao === 'RESTAURACAO') return { icon: Archive, color: 'text-amber-700', bg: 'bg-amber-100 dark:bg-amber-900/30' };
-      if (acao === 'REVERSAO_ESTOQUE') return { icon: Undo2, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' };
-      if (acao === 'SAIDA_ESTOQUE') return { icon: Truck, color: 'text-emerald-700', bg: 'bg-emerald-100 dark:bg-emerald-900/30' };
-      if (acao === 'INICIO_MONTAGEM') return { icon: Play, color: 'text-info', bg: 'bg-info/10' };
-
-      if (acao.includes('CADASTRO') || acao.includes('ENTRADA')) return { icon: PlusCircle, color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900/30' };
-      if (acao.includes('EDICAO')) return { icon: Edit, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' };
-      if (acao.includes('EXCLUSAO')) return { icon: Trash2, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
-
-      if (acao.includes('PAUSA')) return { icon: AlertTriangle, color: 'text-orange-600', bg: 'bg-orange-100 dark:bg-orange-900/30' };
-
-      if (acao === 'APROVACAO_QA' || acao === 'PRODUCAO_FIM') return { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-900/30' };
-      if (acao.includes('REPROVACAO') || acao.includes('RETRABALHO')) return { icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-100 dark:bg-red-900/30' };
-      if (acao.includes('REPARO')) return { icon: Wrench, color: 'text-indigo-600', bg: 'bg-indigo-100 dark:bg-indigo-900/30' };
-      if (acao.includes('ETIQUETA')) return { icon: Printer, color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' };
-
-      return { icon: Info, color: 'text-muted-foreground', bg: 'bg-muted' };
+      if (acao === 'LOGIN_FALHA') return { icon: ShieldX, color: 'text-destructive' };
+      if (acao.includes('LOGIN')) return { icon: LogIn, color: 'text-sutil' };
+      if (acao.includes('LOGOUT')) return { icon: LogOut, color: 'text-sutil' };
+      if (acao === 'CONFIGURACAO') return { icon: Settings, color: 'text-sutil' };
+      if (acao === 'SENHA_ALTERADA') return { icon: KeyRound, color: 'text-sutil' };
+      if (acao === 'ARQUIVAMENTO' || acao === 'RESTAURACAO') return { icon: Archive, color: 'text-sutil' };
+      if (acao === 'REVERSAO_ESTOQUE') return { icon: Undo2, color: 'text-warning' };
+      if (acao === 'SAIDA_ESTOQUE') return { icon: Truck, color: 'text-success' };
+      if (acao === 'INICIO_MONTAGEM') return { icon: Play, color: 'text-info' };
+      if (acao.includes('CADASTRO') || acao.includes('ENTRADA')) return { icon: PlusCircle, color: 'text-sutil' };
+      if (acao.includes('EDICAO')) return { icon: Edit, color: 'text-sutil' };
+      if (acao.includes('EXCLUSAO')) return { icon: Trash2, color: 'text-destructive' };
+      if (acao.includes('PAUSA')) return { icon: AlertTriangle, color: 'text-warning' };
+      if (acao === 'APROVACAO_QA' || acao === 'PRODUCAO_FIM') return { icon: CheckCircle2, color: 'text-success' };
+      if (acao.includes('REPROVACAO') || acao.includes('RETRABALHO')) return { icon: AlertTriangle, color: 'text-destructive' };
+      if (acao.includes('REPARO')) return { icon: Wrench, color: 'text-info' };
+      if (acao.includes('ETIQUETA')) return { icon: Printer, color: 'text-sutil' };
+      return { icon: Info, color: 'text-sutil' };
   };
 
   // CSV com ";" e BOM: abre com acentos e colunas corretas no Excel em português
@@ -341,11 +338,18 @@ export default function AuditoriaPage() {
                                            <TableRow key={log.id} className="hover:bg-accent group transition-colors">
                                                <TableCell className="max-w-[360px]">
                                                    <div className="flex items-center gap-3">
-                                                       <div className={`p-2 rounded-lg shrink-0 ${style.bg} ${style.color}`}>
-                                                           <Icon className="w-4 h-4" />
-                                                       </div>
+                                                       {estacaoDaAcao(log.acao) ? (
+                                                         <span className={cn("codigo-estacao h-7 min-w-9 shrink-0", ["AV", "IN"].includes(estacaoDaAcao(log.acao) ?? "") && "border border-dashed border-foreground/40 bg-transparent text-foreground")}>
+                                                           {estacaoDaAcao(log.acao)}
+                                                         </span>
+                                                       ) : (
+                                                         <span className="flex h-7 min-w-9 shrink-0 items-center justify-center rounded-sm border">
+                                                           <Icon className={cn("size-4", style.color)} />
+                                                         </span>
+                                                       )}
                                                        <div className="min-w-0">
-                                                           <span className="font-bold text-xs uppercase tracking-wide text-foreground/90">
+                                                           <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                                                               {estacaoDaAcao(log.acao) && <Icon className={cn("size-3.5 shrink-0", style.color)} aria-hidden />}
                                                                {rotuloAcao(log.acao)}
                                                            </span>
                                                            {resumo && <p className="text-[11px] text-muted-foreground truncate" title={resumo}>{resumo}</p>}
@@ -361,22 +365,22 @@ export default function AuditoriaPage() {
                                                </TableCell>
                                                <TableCell>
                                                    {log.referencia ? (
-                                                       <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground flex w-fit items-center gap-1 border-slate-200 bg-muted/50">
-                                                           <ScanBarcode className="w-3 h-3"/> {log.referencia}
-                                                       </Badge>
+                                                       <span className="inline-flex w-fit items-center gap-1 rounded-sm border bg-card px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                                                           <ScanBarcode className="size-3"/> {log.referencia}
+                                                       </span>
                                                    ) : <span className="text-muted-foreground text-xs">-</span>}
                                                </TableCell>
                                                <TableCell>
                                                    <div className="flex flex-col text-sm text-muted-foreground">
-                                                       <span>{format(new Date(log.created_at), "dd/MM/yyyy")}</span>
-                                                       <span className="text-xs opacity-70">
+                                                       <span className="font-mono text-xs">{format(new Date(log.created_at), "dd/MM/yyyy")}</span>
+                                                       <span className="font-mono text-xs text-sutil">
                                                            {format(new Date(log.created_at), "HH:mm:ss")}
                                                        </span>
                                                    </div>
                                                </TableCell>
                                                <TableCell className="text-right">
                                                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-60 group-hover:opacity-100 transition-opacity" onClick={() => setLogDetalhe(log)} aria-label="Ver detalhes">
-                                                       <FileJson className="w-4 h-4 text-muted-foreground hover:text-blue-500" />
+                                                       <FileJson className="size-4 text-muted-foreground hover:text-foreground" />
                                                    </Button>
                                                </TableCell>
                                            </TableRow>
@@ -399,10 +403,10 @@ export default function AuditoriaPage() {
 
         {/* Detalhe do evento */}
         <Dialog open={!!logDetalhe} onOpenChange={(o) => !o && setLogDetalhe(null)}>
-            <DialogContent className="sm:max-w-xl bg-card border-border">
+            <DialogContent className="sm:max-w-xl">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
-                        <ShieldAlert className="w-5 h-5 text-red-500" /> Detalhes da Auditoria
+                        <ShieldAlert className="size-5 text-sutil" /> Detalhes do registro
                     </DialogTitle>
                     <DialogDescription>{logDetalhe ? rotuloAcao(logDetalhe.acao) : ''} · {logDetalhe?.usuario}</DialogDescription>
                 </DialogHeader>
@@ -410,16 +414,16 @@ export default function AuditoriaPage() {
                 {logDetalhe && (
                   <div className="space-y-4">
                       <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div className="p-3 bg-muted/50 rounded border border-slate-100 dark:border-slate-700">
-                              <p className="text-xs font-bold uppercase text-muted-foreground">ID do Evento</p>
+                          <div className="rounded-sm border bg-background/60 p-3">
+                              <p className="rotulo text-sutil">ID do evento</p>
                               <p className="font-mono text-xs mt-1 break-all">{logDetalhe.id}</p>
                           </div>
-                          <div className="p-3 bg-muted/50 rounded border border-slate-100 dark:border-slate-700">
-                              <p className="text-xs font-bold uppercase text-muted-foreground">Tela de origem</p>
+                          <div className="rounded-sm border bg-background/60 p-3">
+                              <p className="rotulo text-sutil">Tela de origem</p>
                               <p className="font-mono text-xs mt-1">{String(meta.url_origem || '—')}</p>
                           </div>
-                          <div className="col-span-2 p-3 bg-muted/50 rounded border border-slate-100 dark:border-slate-700">
-                              <p className="text-xs font-bold uppercase text-muted-foreground">Dispositivo (User Agent)</p>
+                          <div className="col-span-2 rounded-sm border bg-background/60 p-3">
+                              <p className="rotulo text-sutil">Dispositivo (user agent)</p>
                               <p className="text-xs mt-1 break-words">
                                   {String(meta.userAgent || 'Não identificado')}
                               </p>
@@ -427,8 +431,8 @@ export default function AuditoriaPage() {
                       </div>
 
                       <div>
-                          <p className="text-xs font-bold uppercase text-muted-foreground mb-2">Payload Completo (JSON)</p>
-                          <div className="bg-slate-950 text-emerald-400 p-4 rounded-lg font-mono text-[10px] overflow-auto max-h-[300px] border border-slate-800 shadow-inner">
+                          <p className="rotulo mb-2 text-sutil">Dados completos (JSON)</p>
+                          <div className="max-h-[300px] overflow-auto rounded-md border border-white/10 bg-sidebar p-4 font-mono text-[11px] text-sidebar-foreground">
                               <pre>{JSON.stringify(logDetalhe.dados, null, 2)}</pre>
                           </div>
                       </div>
