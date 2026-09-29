@@ -16,12 +16,21 @@
 // As regras de e-mail técnico e de senha do PIN são as mesmas de src/lib/rbac/credenciais.ts.
 // =====================================================================================
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { createClient } from "@supabase/supabase-js";
+
+if (fs.existsSync(".env.local")) {
+  try {
+    process.loadEnvFile(".env.local");
+  } catch {
+    /* ignore */
+  }
+}
 
 const DOMINIO_TECNICO = "shineray.sys";
 const APLICAR = process.argv.includes("--aplicar");
-const URL = process.env.SUPABASE_URL;
-const CHAVE = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const CHAVE = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.service_role;
 
 if (!URL || !CHAVE) {
   console.error("Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY (Project Settings > API > service_role).");
