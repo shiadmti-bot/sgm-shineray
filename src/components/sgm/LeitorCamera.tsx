@@ -37,7 +37,7 @@ export function LeitorCamera({
   return (
     <div className="relative overflow-hidden rounded-xl bg-black">
       <video ref={ref} className="aspect-video w-full object-cover" muted playsInline />
-      <div className="pointer-events-none absolute inset-x-8 top-1/2 h-0.5 -translate-y-1/2 bg-red-500/80 shadow-[0_0_12px_rgba(239,68,68,0.9)]" />
+      <div className="pointer-events-none absolute inset-x-8 top-1/2 h-0.5 -translate-y-1/2 bg-primary/90" />
       <Button type="button" variant="secondary" size="icon" className="absolute right-3 top-3 rounded-full" onClick={aoFechar} aria-label="Fechar câmera">
         <X />
       </Button>

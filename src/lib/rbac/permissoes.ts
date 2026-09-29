@@ -6,7 +6,7 @@ export const GRUPOS_PERMISSAO = ["Visão geral", "Operação", "Qualidade", "Log
 export type GrupoPermissao = (typeof GRUPOS_PERMISSAO)[number];
 
 export const PERMISSOES = [
-  { chave: "painel.ver", grupo: "Visão geral", rotulo: "Ver o painel", descricao: "Indicadores e linha de produção em tempo real." },
+  { chave: "painel.ver", grupo: "Visão geral", rotulo: "Ver a Central da linha", descricao: "Fluxo das estações, meta do dia e alertas em tempo real." },
   { chave: "prontuario.ver", grupo: "Visão geral", rotulo: "Consultar prontuário", descricao: "Histórico completo de cada chassi e busca rápida (Ctrl+K)." },
   { chave: "scanner.registrar", grupo: "Operação", rotulo: "Registrar entrada", descricao: "Leitura de caixas no recebimento (scanner)." },
   { chave: "montagem.executar", grupo: "Operação", rotulo: "Montar motos", descricao: "Assumir, montar, pedir pausa e finalizar montagens." },

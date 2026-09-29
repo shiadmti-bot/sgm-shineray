@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Barlow, Barlow_Condensed, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
@@ -7,8 +7,8 @@ import type { Viewport } from 'next';
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#dc2626' },
-    { media: '(prefers-color-scheme: dark)', color: '#0e0e10' },
+    { media: '(prefers-color-scheme: light)', color: '#121315' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0b' },
   ],
   width: 'device-width',
   initialScale: 1,
@@ -16,14 +16,24 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Tipografia industrial: Barlow (textos e números), Barlow Condensed (rótulos técnicos)
+// e IBM Plex Mono (chassi, códigos e horários).
+const barlow = Barlow({
+  variable: "--font-barlow",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const barlowCondensed = Barlow_Condensed({
+  variable: "--font-barlow-condensed",
   subsets: ["latin"],
+  weight: ["500", "600", "700"],
+});
+
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -40,7 +50,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${barlow.variable} ${barlowCondensed.variable} ${plexMono.variable} antialiased`}
       >
         <ThemeProvider
           attribute="class"
@@ -49,7 +59,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
-          
+
           <Toaster richColors closeButton position="top-right" />
         </ThemeProvider>
       </body>

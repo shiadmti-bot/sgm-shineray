@@ -22,6 +22,8 @@ import { ConfirmDialog } from "@/components/sgm/ConfirmDialog";
 import { StatusBadge } from "@/components/sgm/StatusBadge";
 import { LeitorCamera } from "@/components/sgm/LeitorCamera";
 import { Carregando } from "@/components/sgm/Carregando";
+import { Selo } from "@/components/sgm/Selo";
+import { Led, type EstadoLed } from "@/components/sgm/Led";
 import { supabase } from "@/lib/supabase";
 import { usePode } from "@/lib/auth";
 import { registrarLog } from "@/lib/logger";
@@ -70,11 +72,11 @@ interface MotoEscopo { id: string; sku: string; modelo: string | null; status: s
 const COLUNAS_INVENTARIO =
   "*, iniciador:funcionarios!inventarios_iniciado_por_fkey(nome), finalizador:funcionarios!inventarios_finalizado_por_fkey(nome)";
 
-const SITUACAO: Record<string, { rotulo: string; classe: string }> = {
-  confere: { rotulo: "Confere", classe: "bg-success/10 text-success border-success/30" },
-  fora_do_escopo: { rotulo: "Fora do escopo", classe: "bg-warning/10 text-warning border-warning/40" },
-  nao_cadastrada: { rotulo: "Não cadastrada", classe: "bg-destructive/10 text-destructive border-destructive/30" },
-  duplicada: { rotulo: "Já lida", classe: "bg-muted text-muted-foreground border-border" },
+const SITUACAO: Record<string, { rotulo: string; estado: EstadoLed; borda: string }> = {
+  confere: { rotulo: "Confere", estado: "bom", borda: "border-l-success" },
+  fora_do_escopo: { rotulo: "Fora do escopo", estado: "atencao", borda: "border-l-warning" },
+  nao_cadastrada: { rotulo: "Não cadastrada", estado: "critico", borda: "border-l-destructive" },
+  duplicada: { rotulo: "Já lida", estado: "neutro", borda: "border-l-sutil" },
 };
 
 const dataHora = (iso?: string | null) => (iso ? new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—");
@@ -150,16 +152,12 @@ export default function InventarioPage() {
                   </p>
                 </div>
                 {inv.status === "cancelado" ? (
-                  <span className="w-fit rounded-full border px-2 py-0.5 text-xs text-muted-foreground">Cancelado</span>
+                  <Selo estado="desligado">Cancelado</Selo>
                 ) : (
                   <div className="flex gap-2 text-xs">
-                    <span className="rounded-full bg-muted px-2 py-0.5">{inv.total_lido ?? 0}/{inv.total_esperado ?? 0} lidas</span>
-                    <span className={cn("rounded-full px-2 py-0.5", (inv.total_faltas ?? 0) > 0 ? "bg-destructive/10 text-destructive" : "bg-success/10 text-success")}>
-                      {inv.total_faltas ?? 0} falta(s)
-                    </span>
-                    <span className={cn("rounded-full px-2 py-0.5", (inv.total_sobras ?? 0) > 0 ? "bg-warning/10 text-warning" : "bg-success/10 text-success")}>
-                      {inv.total_sobras ?? 0} sobra(s)
-                    </span>
+                    <Selo>{inv.total_lido ?? 0}/{inv.total_esperado ?? 0} lidas</Selo>
+                    <Selo estado={(inv.total_faltas ?? 0) > 0 ? "critico" : "bom"}>{inv.total_faltas ?? 0} falta(s)</Selo>
+                    <Selo estado={(inv.total_sobras ?? 0) > 0 ? "atencao" : "bom"}>{inv.total_sobras ?? 0} sobra(s)</Selo>
                   </div>
                 )}
               </button>
@@ -366,7 +364,7 @@ function ContagemAberta({
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2"><span className="size-2.5 animate-pulse rounded-full bg-primary" /> {inventario.descricao || "Inventário em andamento"}</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Led estado="processo" piscando /> {inventario.descricao || "Inventário em andamento"}</CardTitle>
               <CardDescription>
                 {rotuloEscopo(inventario.escopo)} · iniciado {dataHora(inventario.iniciado_em)} por {inventario.iniciador?.nome ?? "—"}
               </CardDescription>
@@ -418,12 +416,15 @@ function ContagemAberta({
                 </Button>
               </form>
               {ultima && (
-                <div className={cn("flex items-center justify-between gap-3 rounded-xl border px-4 py-3", SITUACAO[ultima.situacao]?.classe)}>
+                <div className={cn("flex items-center justify-between gap-3 rounded-md border border-l-[3px] bg-card px-4 py-3", SITUACAO[ultima.situacao]?.borda)}>
                   <div className="min-w-0">
-                    <p className="font-mono text-sm font-bold">{ultima.sku}</p>
-                    <p className="text-xs">{ultima.modelo || "Sem cadastro"}</p>
+                    <p className="font-mono text-sm font-semibold">{ultima.sku}</p>
+                    <p className="text-xs text-muted-foreground">{ultima.modelo || "Sem cadastro"}</p>
                   </div>
-                  <span className="text-sm font-semibold">{SITUACAO[ultima.situacao]?.rotulo ?? ultima.situacao}</span>
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <Led estado={SITUACAO[ultima.situacao]?.estado ?? "neutro"} />
+                    {SITUACAO[ultima.situacao]?.rotulo ?? ultima.situacao}
+                  </span>
                 </div>
               )}
             </div>
@@ -516,9 +517,9 @@ function ListaLeituras({ itens, aoDesfazer, vazio }: { itens: Leitura[]; aoDesfa
                   {l.leitor?.nome ? ` · ${l.leitor.nome}` : ""}
                 </p>
               </div>
-              <span className={cn("hidden rounded-full border px-2 py-0.5 text-xs font-semibold sm:inline", SITUACAO[l.situacao]?.classe)}>
+              <Selo estado={SITUACAO[l.situacao]?.estado} className="hidden sm:inline-flex">
                 {SITUACAO[l.situacao]?.rotulo ?? l.situacao}
-              </span>
+              </Selo>
               {aoDesfazer && (
                 <Button variant="ghost" size="icon-sm" onClick={() => aoDesfazer(l)} aria-label={`Desfazer leitura de ${l.sku}`} title="Desfazer leitura">
                   <Undo2 />

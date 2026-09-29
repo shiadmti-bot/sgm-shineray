@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/sgm/PageHeader";
 import { EmptyState } from "@/components/sgm/EmptyState";
 import { ConfirmDialog } from "@/components/sgm/ConfirmDialog";
 import { Iniciais } from "@/components/sgm/Iniciais";
+import { Selo } from "@/components/sgm/Selo";
 import { tempoRelativo } from "@/components/layout/SinoNotificacoes";
 import { supabase } from "@/lib/supabase";
 import { chamarApi } from "@/lib/api";
@@ -59,11 +60,11 @@ interface Formulario {
 const DIAS_DESEMPENHO = 90;
 const FORM_VAZIO: Formulario = { nome: "", matricula: "", email: "", perfil_id: "", data_contratacao: "", senha: "", pin: "", exigir_troca: true };
 
-const SELOS: Record<string, { rotulo: string; icone: typeof Medal; classe: string }> = {
-  qualidade: { rotulo: "Zero retrabalho", icone: ShieldCheck, classe: "bg-success/10 text-success" },
-  volume: { rotulo: "50+ montagens", icone: Trophy, classe: "bg-warning/10 text-warning" },
-  velocidade: { rotulo: "Ágil", icone: Zap, classe: "bg-info/10 text-info" },
-  producao: { rotulo: "Montando agora", icone: Flame, classe: "bg-primary/10 text-primary" },
+const SELOS: Record<string, { rotulo: string; icone: typeof Medal }> = {
+  qualidade: { rotulo: "Zero retrabalho", icone: ShieldCheck },
+  volume: { rotulo: "50+ montagens", icone: Trophy },
+  velocidade: { rotulo: "Ágil", icone: Zap },
+  producao: { rotulo: "Montando agora", icone: Flame },
 };
 
 async function carregarDesempenho(): Promise<Map<string, Desempenho>> {
@@ -291,13 +292,11 @@ export default function EquipePage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 md:w-[26rem] md:justify-end">
-                      <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", u.perfil ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>
-                        {u.perfil?.nome ?? "Sem perfil"}
-                      </span>
-                      {u.perfil?.acesso_pin && <span className="rounded-full bg-info/10 px-2 py-0.5 text-xs font-semibold text-info">PIN</span>}
-                      {u.acesso === "sem_acesso" && <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">Sem acesso</span>}
-                      {u.acesso === "bloqueado" && u.ativo && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">Bloqueado</span>}
-                      {u.trocar_senha && <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Troca de senha pendente</span>}
+                      <Selo estado={u.perfil ? undefined : "critico"}>{u.perfil?.nome ?? "Sem perfil"}</Selo>
+                      {u.perfil?.acesso_pin && <Selo>PIN</Selo>}
+                      {u.acesso === "sem_acesso" && <Selo estado="atencao">Sem acesso</Selo>}
+                      {u.acesso === "bloqueado" && u.ativo && <Selo estado="critico">Bloqueado</Selo>}
+                      {u.trocar_senha && <Selo estado="neutro">Troca de senha pendente</Selo>}
                       <span className="text-xs text-muted-foreground">{u.ultimo_acesso ? `Último acesso ${tempoRelativo(u.ultimo_acesso)}` : "Nunca acessou"}</span>
                     </div>
                     {podeMexer(u) && (
@@ -333,15 +332,14 @@ export default function EquipePage() {
                         <div className="relative">
                           <Iniciais nome={u.nome} className="size-12 text-sm" />
                           {i < 3 && (
-                            <span className={cn("absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full border-2 border-card text-xs font-bold text-white",
-                              i === 0 ? "bg-yellow-500" : i === 1 ? "bg-zinc-400" : "bg-amber-700")}>{i + 1}</span>
+                            <span className="absolute -bottom-1.5 -right-1.5 flex h-5 min-w-6 items-center justify-center rounded-sm border-2 border-card bg-foreground px-0.5 font-mono text-[10px] font-semibold text-background">{i + 1}º</span>
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-semibold">{u.nome}</p>
                           <p className="text-xs text-muted-foreground">{u.perfil?.nome ?? "—"}</p>
                         </div>
-                        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-sm font-bold text-primary tabular-nums">{d.score} pts</span>
+                        <span className="rounded-sm border px-2 py-1 font-mono text-sm font-semibold tabular-nums">{d.score} pts</span>
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-center">
                         <div className="rounded-lg bg-muted/60 py-2"><p className="text-lg font-bold tabular-nums">{d.total}</p><p className="text-[11px] text-muted-foreground">montagens</p></div>
@@ -353,7 +351,7 @@ export default function EquipePage() {
                           {d.selos.map((s) => {
                             const selo = SELOS[s];
                             const Icone = selo.icone;
-                            return <span key={s} className={cn("flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold", selo.classe)}><Icone className="size-3" /> {selo.rotulo}</span>;
+                            return <Selo key={s} icone={Icone}>{selo.rotulo}</Selo>;
                           })}
                         </div>
                       )}

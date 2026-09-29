@@ -55,8 +55,8 @@ export default function NotificacoesPage() {
             key={f.valor}
             type="button"
             onClick={() => setFiltro(f.valor)}
-            className={cn("rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
-              filtro === f.valor ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-accent")}
+            className={cn("rounded-sm border px-3 py-1.5 font-rotulo text-[13px] font-semibold uppercase tracking-[0.04em] transition-colors",
+              filtro === f.valor ? "border-foreground bg-foreground text-background" : "bg-card text-muted-foreground hover:bg-accent hover:text-foreground")}
           >
             {f.rotulo}{f.valor === "nao_lidas" && naoLidas > 0 ? ` (${naoLidas})` : ""}
           </button>

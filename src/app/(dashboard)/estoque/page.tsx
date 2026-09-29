@@ -4,25 +4,57 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { usePode } from "@/lib/auth";
 import { PageHeader } from "@/components/sgm/PageHeader";
-import { 
-  Warehouse, Search, Truck, CheckCircle2, FileJson, Calendar, User, PaintBucket, Tag, AlertCircle, Wrench, RotateCcw, Pencil, Printer, Download, Loader2, RefreshCw
+import { EmptyState } from "@/components/sgm/EmptyState";
+import { Dica } from "@/components/sgm/Guia";
+import { Led } from "@/components/sgm/Led";
+import { Painel } from "@/components/sgm/Painel";
+import { PlacaChassi } from "@/components/sgm/PlacaChassi";
+import { StatCard } from "@/components/sgm/StatCard";
+import { MatrizPatio } from "@/components/estoque/MatrizPatio";
+import {
+  Warehouse, Search, Truck, CheckCircle2, FileText, AlertCircle, Wrench, RotateCcw, Pencil, Printer, Download, Loader2, RefreshCw, X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { registrarLog } from "@/lib/logger";
 import { listarModelos } from "@/lib/model-decoder";
-import { getHexColor as corHex } from "@/lib/constantes";
+import { getHexColor as corHex, rotuloAvaria } from "@/lib/constantes";
 import { useConfigGeral } from "@/lib/config-sistema";
 import { minutosDesde } from "@/lib/datas";
 import { carregarConfigEtiquetas, modeloPadrao } from "@/lib/etiquetas/armazenamento";
 import { renderizarEtiquetas } from "@/lib/etiquetas/render";
 import { imprimirHTML } from "@/lib/etiquetas/imprimir";
+import { cn } from "@/lib/utils";
+
+interface MotoEstoque {
+  id: string;
+  sku: string;
+  modelo: string;
+  ano?: string | null;
+  cor?: string | null;
+  cor_banco?: string | null;
+  localizacao?: string | null;
+  observacoes?: string | null;
+  tecnico_reparo?: string | null;
+  rework_count?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  montador?: { nome: string } | null;
+  supervisor?: { nome: string } | null;
+}
+
+interface AvariaHistorico {
+  id: string;
+  tipo_avaria: string;
+  descricao_problema: string;
+  descricao_solucao?: string | null;
+  tecnico_nome?: string | null;
+  created_at: string;
+  data_resolucao?: string | null;
+}
 
 export default function EstoquePage() {
   const podeEditar = usePode("estoque.editar");
@@ -32,25 +64,26 @@ export default function EstoquePage() {
   const MODELOS_CADASTRADOS = listarModelos(configGeral.modelosExtras);
   const getHexColor = (nome: string) => corHex(nome, [configGeral.coresCarenagem, configGeral.coresBanco]);
 
-  const [motos, setMotos] = useState<any[]>([]);
+  const [motos, setMotos] = useState<MotoEstoque[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [expedindo, setExpedindo] = useState(false);
   const [reimprimindo, setReimprimindo] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
+  const [limiteLista, setLimiteLista] = useState(60);
   const [filtroModelo, setFiltroModelo] = useState("todos");
   const [filtroCor, setFiltroCor] = useState("todas");
-  const [motoSaida, setMotoSaida] = useState<any>(null);
+  const [motoSaida, setMotoSaida] = useState<MotoEstoque | null>(null);
   
   // Estados para Detalhes
-  const [motoDetalhes, setMotoDetalhes] = useState<any>(null);
-  const [historicoAvarias, setHistoricoAvarias] = useState<any[]>([]);
+  const [motoDetalhes, setMotoDetalhes] = useState<MotoEstoque | null>(null);
+  const [historicoAvarias, setHistoricoAvarias] = useState<AvariaHistorico[]>([]);
   const [isRevertingConfirm, setIsRevertingConfirm] = useState(false);
   const [reverterMotivo, setReverterMotivo] = useState("etiqueta_danificada");
   const [reverterMotivoCustom, setReverterMotivoCustom] = useState("");
   const [declaracaoReverter, setDeclaracaoReverter] = useState(false);
 
   // Estados para QoL de Edição de Moto
-  const [motoEditando, setMotoEditando] = useState<any>(null);
+  const [motoEditando, setMotoEditando] = useState<MotoEstoque | null>(null);
   const [modeloEdit, setModeloEdit] = useState("");
   const [customModeloEdit, setCustomModeloEdit] = useState("");
   const [usarCustomModeloEdit, setUsarCustomModeloEdit] = useState(false);
@@ -71,7 +104,7 @@ export default function EstoquePage() {
       .order('updated_at', { ascending: false });
     
     if (error) toast.error("Erro ao carregar o estoque.");
-    else if (data) setMotos(data);
+    else if (data) setMotos(data as MotoEstoque[]);
     setCarregando(false);
   }, []);
 
@@ -110,7 +143,7 @@ export default function EstoquePage() {
   };
 
   // Reimpressão direta (etiqueta danificada) sem tirar a moto do estoque
-  const handleReimprimir = async (moto: any) => {
+  const handleReimprimir = async (moto: MotoEstoque) => {
     setReimprimindo(moto.id);
     try {
         const { valor } = await carregarConfigEtiquetas();
@@ -129,7 +162,7 @@ export default function EstoquePage() {
     }
   };
 
-  const handleVerDetalhes = async (moto: any) => {
+  const handleVerDetalhes = async (moto: MotoEstoque) => {
       setMotoDetalhes(moto);
       setHistoricoAvarias([]); // Limpa anterior
       setIsRevertingConfirm(false);
@@ -144,10 +177,10 @@ export default function EstoquePage() {
         .eq('moto_id', moto.id)
         .order('created_at', { ascending: false });
 
-      if (data) setHistoricoAvarias(data);
+      if (data) setHistoricoAvarias(data as AvariaHistorico[]);
   };
 
-  const handleAbrirEditar = (moto: any) => {
+  const handleAbrirEditar = (moto: MotoEstoque) => {
       setMotoEditando(moto);
       const isCustom = !MODELOS_CADASTRADOS.includes(moto.modelo);
       setUsarCustomModeloEdit(isCustom);
@@ -190,7 +223,7 @@ export default function EstoquePage() {
           });
           setMotoEditando(null);
           fetchEstoque();
-      } catch (err: any) {
+      } catch (err) {
           console.error("Erro ao editar moto:", err);
           toast.error("Erro ao atualizar a moto.");
       } finally {
@@ -198,7 +231,7 @@ export default function EstoquePage() {
       }
   };
 
-  const handleReverterEtiquetagem = async (moto: any) => {
+  const handleReverterEtiquetagem = async (moto: MotoEstoque) => {
       const motivoFinal = reverterMotivo === "outro" ? reverterMotivoCustom.trim() : reverterMotivo;
       if (!motivoFinal || motivoFinal.trim() === "") {
           return toast.warning("Por favor, informe o motivo da reversão.");
@@ -235,7 +268,7 @@ export default function EstoquePage() {
           });
           setMotoDetalhes(null); // Fecha o modal
           fetchEstoque();
-      } catch (err: any) {
+      } catch (err) {
           console.error("Erro ao reverter:", err);
           toast.error("Erro ao reverter status para etiquetagem.");
       } finally {
@@ -243,17 +276,19 @@ export default function EstoquePage() {
       }
   };
 
-  // Extrai listas únicas para os filtros
   const modelosUnicos = Array.from(new Set(motos.map(m => m.modelo))).sort();
-  const coresUnicas = Array.from(new Set(motos.map(m => m.cor).filter(Boolean))).sort();
+  const coresUnicas = Array.from(new Set(motos.map(m => m.cor).filter(Boolean)));
+  const diasParada = (m: MotoEstoque) => Math.floor(minutosDesde(m.updated_at) / 1440);
+  const paradas30 = motos.filter(m => diasParada(m) >= 30).length;
 
   const motosFiltradas = motos.filter(m => {
     const termo = busca.toLowerCase();
     const matchBusca = (m.sku || '').toLowerCase().includes(termo) || (m.modelo || '').toLowerCase().includes(termo) || (m.cor || '').toLowerCase().includes(termo);
     const matchModelo = filtroModelo === "todos" || m.modelo === filtroModelo;
-    const matchCor = filtroCor === "todas" || m.cor === filtroCor;
+    const matchCor = filtroCor === "todas" || (m.cor || "Sem cor") === filtroCor;
     return matchBusca && matchModelo && matchCor;
   });
+  const filtrando = filtroModelo !== 'todos' || filtroCor !== 'todas' || !!busca;
 
   // Exporta a lista filtrada (CSV com ; e BOM: abre corretamente no Excel em português)
   const handleExportarCSV = () => {
@@ -262,7 +297,7 @@ export default function EstoquePage() {
     const cabecalho = ['Chassi', 'Modelo', 'Ano', 'Cor', 'Banco', 'Montador', 'Inspetor QA', 'Retrabalhos', 'Reparada por', 'Entrada no estoque', 'Dias em estoque', 'Localização'];
     const linhas = motosFiltradas.map(m => [
       m.sku, m.modelo, m.ano, m.cor, m.cor_banco, m.montador?.nome, m.supervisor?.nome, m.rework_count || 0, m.tecnico_reparo || '',
-      m.updated_at ? new Date(m.updated_at).toLocaleString('pt-BR') : '', Math.floor(minutosDesde(m.updated_at) / 1440), m.localizacao,
+      m.updated_at ? new Date(m.updated_at).toLocaleString('pt-BR') : '', diasParada(m), m.localizacao,
     ].map(esc).join(';'));
     const blob = new Blob(['\uFEFF' + [cabecalho.map(esc).join(';'), ...linhas].join('\r\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -273,608 +308,426 @@ export default function EstoquePage() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const data = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : '—');
+
   return (
-      <div className="space-y-6 animate-in fade-in pb-20">
+      <div className="space-y-6 pb-20">
         <PageHeader
-          icone={Warehouse}
           titulo="Estoque"
-          descricao="Motos etiquetadas e prontas para expedição."
+          descricao="Pátio de motos prontas: etiquetadas na Etiquetagem (E4) e aguardando expedição."
           acoes={
-          <div className="flex flex-wrap gap-2 items-center">
-             <Badge variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900 px-3 py-1">
-                {motos.length} Unidades Totais
-             </Badge>
-             <Badge variant="outline" className="text-slate-700 border-slate-200 bg-muted/50 dark:text-slate-300 dark:border-slate-800 px-3 py-1">
-                {modelosUnicos.length} Modelos
-             </Badge>
-             <Button variant="outline" size="sm" onClick={handleExportarCSV} className="h-8">
-                <Download className="w-4 h-4 mr-1" /> Exportar CSV
-             </Button>
-             <Button variant="ghost" size="icon" onClick={fetchEstoque} className="h-8 w-8" title="Atualizar" aria-label="Atualizar estoque">
-                <RefreshCw className="w-4 h-4" />
-             </Button>
-          </div>
+            <>
+              <Button variant="outline" size="sm" onClick={handleExportarCSV} className="gap-1.5">
+                <Download className="size-3.5" /> Exportar CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={fetchEstoque} className="gap-1.5" aria-label="Atualizar estoque">
+                <RefreshCw className="size-3.5" /> Atualizar
+              </Button>
+            </>
           }
         />
 
-        {/* Barra de Filtros Harmonizada */}
-        <div className="bg-card p-4 rounded-xl border border-border flex flex-col xl:flex-row gap-4 shadow-sm">
-            <div className="relative flex-1">
-               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-               <Input 
-                   placeholder="Buscar chassi, modelo ou cor..." 
-                   className="pl-10 h-10 border-border" 
-                   value={busca}
-                   onChange={e => setBusca(e.target.value)}
-               />
-            </div>
-            
-            <div className="flex gap-2 w-full xl:w-auto">
-                <Select value={filtroModelo} onValueChange={setFiltroModelo}>
-                    <SelectTrigger className="w-full md:w-[240px] h-10 border-border">
-                        <Tag className="w-4 h-4 mr-2 text-muted-foreground"/>
-                        <SelectValue placeholder="Filtrar Modelo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="todos">Todos os Modelos</SelectItem>
-                        {modelosUnicos.map(mod => <SelectItem key={mod} value={mod}>{mod}</SelectItem>)}
-                    </SelectContent>
-                </Select>
-
-                <Select value={filtroCor} onValueChange={setFiltroCor}>
-                    <SelectTrigger className="w-full md:w-[180px] h-10 border-border">
-                        <PaintBucket className="w-4 h-4 mr-2 text-muted-foreground"/>
-                        <SelectValue placeholder="Filtrar Cor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="todas">Todas as Cores</SelectItem>
-                        {coresUnicas.map(cor => (
-                            <SelectItem key={cor} value={cor}>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded-full border border-slate-200" style={{backgroundColor: getHexColor(cor as string)}}></div>
-                                    {cor}
-                                </div>
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
-                {(filtroModelo !== 'todos' || filtroCor !== 'todas' || busca) && (
-                    <Button variant="ghost" onClick={() => { setBusca(""); setFiltroModelo("todos"); setFiltroCor("todas"); }} className="h-10 px-3 text-red-500 hover:text-red-700 hover:bg-red-50">
-                        Limpar
-                    </Button>
-                )}
-            </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatCard rotulo="Unidades no pátio" valor={motos.length} icone={Warehouse} tom="neutro" carregando={carregando} />
+          <StatCard rotulo="Modelos" valor={modelosUnicos.length} tom="neutro" carregando={carregando} />
+          <StatCard rotulo="Cores" valor={coresUnicas.length} tom="neutro" carregando={carregando} />
+          <StatCard
+            rotulo="Sem movimentação 30+ dias"
+            valor={paradas30}
+            tom={paradas30 > 0 ? "alerta" : "neutro"}
+            dica="Pela data da última atualização da moto"
+            carregando={carregando}
+          />
         </div>
 
-        {/* Tabela Detalhada */}
-        <Card className="border-0 shadow-md">
-            <CardContent className="p-0">
-                <div className="rounded-xl border border-border overflow-hidden">
-                    <Table>
-                        <TableHeader className="bg-muted/50">
-                            <TableRow>
-                                <TableHead>Identificação</TableHead>
-                                <TableHead>Detalhes Visuais</TableHead>
-                                <TableHead>Histórico</TableHead>
-                                <TableHead>Origem</TableHead>
-                                <TableHead className="text-right">Expedição</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {carregando ? (
-                                <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                                        <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin opacity-40"/>
-                                        Carregando estoque...
-                                    </TableCell>
-                                </TableRow>
-                            ) : motosFiltradas.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
-                                        <Warehouse className="w-12 h-12 mx-auto mb-3 opacity-20"/>
-                                        Nenhuma moto encontrada com os filtros atuais.
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                motosFiltradas.map((moto) => (
-                                    <TableRow key={moto.id} className="hover:bg-accent group transition-colors">
-                                        <TableCell>
-                                            <div className="flex flex-col">
-                                                <span className="font-bold text-foreground">{moto.modelo}</span>
-                                                <Badge variant="outline" className="w-fit mt-1 font-mono text-[10px] text-muted-foreground border-slate-300">
-                                                    {moto.sku}
-                                                </Badge>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full border-2 border-white shadow-sm flex items-center justify-center bg-muted relative z-0 before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-tr before:from-black/10 before:to-transparent" style={{backgroundColor: getHexColor(moto.cor)}}>
-                                                    {/* Dot Visual */}
-                                                </div>
-                                                <div className="flex flex-col text-xs">
-                                                    <span className="font-bold text-foreground/90">{moto.cor}</span>
-                                                    <span className="text-muted-foreground">Banco: {moto.cor_banco}</span>
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center text-xs text-muted-foreground" title="Entrada no estoque">
-                                                    <Calendar className="w-3 h-3 mr-1"/>
-                                                    {new Date(moto.updated_at).toLocaleDateString()}
-                                                    <span className="ml-1 text-muted-foreground">({Math.floor(minutosDesde(moto.updated_at) / 1440)}d)</span>
-                                                </div>
-                                                <div className="flex gap-1">
-                                                    {moto.rework_count > 0 && <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">Rework</Badge>}
-                                                    {moto.tecnico_reparo && <Badge className="bg-blue-100 text-blue-700 text-[9px] px-1 py-0 h-4 border-0">Reparada</Badge>}
-                                                    {!moto.rework_count && !moto.tecnico_reparo && <Badge className="bg-green-100 text-green-700 text-[9px] px-1 py-0 h-4 border-0">1ª Linha</Badge>}
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex flex-col text-xs">
-                                                <span className="flex items-center gap-1 text-muted-foreground"><User className="w-3 h-3"/> Mont: {moto.montador?.nome?.split(' ')[0] || '—'}</span>
-                                                <span className="flex items-center gap-1 text-muted-foreground"><CheckCircle2 className="w-3 h-3 text-green-500"/> QA: {moto.supervisor?.nome?.split(' ')[0] || '—'}</span>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Dialog open={!!motoDetalhes && motoDetalhes.id === moto.id} onOpenChange={(open) => !open && setMotoDetalhes(null)}>
-                                                    <DialogTrigger asChild>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10" onClick={() => handleVerDetalhes(moto)}>
-                                                            <FileJson className="w-4 h-4"/>
-                                                        </Button>
-                                                    </DialogTrigger>
-                                                    <DialogContent className="sm:max-w-2xl bg-card p-0 overflow-hidden shadow-2xl rounded-2xl border border-slate-200/80 dark:border-slate-800">
-                                                        {/* Header com gradiente */}
-                                                        <div className="bg-gradient-to-r from-emerald-600 to-teal-800 dark:from-emerald-950 dark:to-teal-900 text-white p-6 relative overflow-hidden">
-                                                            <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
-                                                            <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/5 rounded-full blur-2xl"></div>
-                                                            <div className="relative flex items-center justify-between">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className="p-3 bg-white/10 rounded-xl backdrop-blur-md border border-white/20 shadow-inner">
-                                                                        <Warehouse className="w-6 h-6 text-emerald-100 animate-pulse"/>
-                                                                    </div>
-                                                                    <div>
-                                                                        <span className="text-[10px] bg-emerald-500/30 text-emerald-100 border border-emerald-400/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                                                                             Ficha Técnica
-                                                                        </span>
-                                                                        <h2 className="text-2xl font-black leading-tight mt-1">{moto.modelo}</h2>
-                                                                        <p className="text-xs text-emerald-200/80 font-mono tracking-widest uppercase mt-0.5">{moto.sku}</p>
-                                                                    </div>
-                                                                </div>
-                                                                <div className="hidden sm:block text-right">
-                                                                     <span className="text-xs text-emerald-200">Entrada</span>
-                                                                     <p className="font-bold text-sm">{new Date(moto.updated_at).toLocaleDateString()}</p>
-                                                                </div>
-                                                            </div>
-                                                        </div>
+        <Dica titulo="Como usar o estoque">
+          A matriz mostra quantas motos há de cada modelo e cor: toque numa célula (ou no nome do modelo ou da cor) para filtrar a lista.
+          Na lista, <span className="font-semibold text-foreground">EXPEDIR</span> registra a saída; a ficha mostra o caminho da moto pela linha e permite devolvê-la à Etiquetagem.
+        </Dica>
 
-                                                        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
-                                                            {!isRevertingConfirm ? (
-                                                                <>
-                                                                    {/* Grid de Informações Chave */}
-                                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                                        <div className="bg-muted/50 p-3.5 rounded-xl border border-border flex flex-col justify-between">
-                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                                                                                <PaintBucket className="w-3.5 h-3.5 text-muted-foreground"/> Carenagem
-                                                                            </span>
-                                                                            <div className="flex items-center gap-2 mt-2">
-                                                                                <div className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-700 shadow-sm" style={{backgroundColor: getHexColor(moto.cor)}}></div>
-                                                                                <span className="font-bold text-sm text-foreground capitalize">{moto.cor}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="bg-muted/50 p-3.5 rounded-xl border border-border flex flex-col justify-between">
-                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                                                                                <PaintBucket className="w-3.5 h-3.5 text-muted-foreground"/> Banco
-                                                                            </span>
-                                                                            <p className="font-bold text-sm text-foreground mt-2 capitalize">{moto.cor_banco || 'N/A'}</p>
-                                                                        </div>
-                                                                        <div className="bg-muted/50 p-3.5 rounded-xl border border-border flex flex-col justify-between">
-                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                                                                                <Calendar className="w-3.5 h-3.5 text-muted-foreground"/> Ano Modelo
-                                                                            </span>
-                                                                            <p className="font-bold text-sm text-foreground mt-2">{moto.ano}</p>
-                                                                        </div>
-                                                                        <div className="bg-muted/50 p-3.5 rounded-xl border border-border flex flex-col justify-between">
-                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-                                                                                <Tag className="w-3.5 h-3.5 text-muted-foreground"/> Status
-                                                                            </span>
-                                                                            <Badge className="bg-emerald-500/10 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border-0 mt-2 text-[10px] w-fit px-2 py-0.5">
-                                                                                ESTOQUE
-                                                                            </Badge>
-                                                                        </div>
-                                                                    </div>
+        {!carregando && (
+          <MatrizPatio
+            motos={motos}
+            corDaCor={(nome) => getHexColor(nome)}
+            modelo={filtroModelo}
+            cor={filtroCor}
+            aoFiltrar={(mod, c) => { setFiltroModelo(mod); setFiltroCor(c); }}
+          />
+        )}
 
-                                                                    {/* Fluxo de Rastreabilidade */}
-                                                                    <div className="bg-muted/50 p-4 rounded-xl border border-border">
-                                                                        <h4 className="text-xs font-black text-muted-foreground uppercase tracking-wider mb-4">Fluxo de Rastreabilidade</h4>
-                                                                        
-                                                                        <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0">
-                                                                            {/* Linha conectora de fundo */}
-                                                                            <div className="absolute left-[15px] top-4 bottom-4 w-0.5 md:left-4 md:right-4 md:top-4 md:bottom-auto md:w-auto md:h-0.5 bg-muted z-0"></div>
-                                                                            
-                                                                            {/* Step 1: Montagem */}
-                                                                            <div className="relative flex md:flex-col items-start md:items-center gap-3 md:gap-2 z-10 w-full md:w-1/4">
-                                                                                <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border-2 border-emerald-500 flex items-center justify-center font-bold text-xs shadow-sm shrink-0">
-                                                                                     1
-                                                                                </div>
-                                                                                <div className="text-left md:text-center">
-                                                                                    <p className="font-bold text-xs text-foreground">Montagem</p>
-                                                                                    <p className="text-[10px] text-muted-foreground font-medium">Por: {moto.montador?.nome?.split(' ')[0] || 'N/A'}</p>
-                                                                                    <p className="text-[9px] text-muted-foreground">{new Date(moto.created_at).toLocaleDateString()}</p>
-                                                                                </div>
-                                                                            </div>
+        <Painel
+          titulo="Motos no pátio"
+          codigo="E5"
+          meta={filtrando ? `${motosFiltradas.length} de ${motos.length} com os filtros atuais` : `${motos.length} unidade(s)`}
+          semRecuo
+        >
+          <div className="flex flex-col gap-3 border-b p-4 md:flex-row md:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar chassi, modelo ou cor..."
+                className="h-10 bg-background pl-10"
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+                aria-label="Buscar no estoque"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {filtroModelo !== 'todos' && (
+                <button type="button" onClick={() => setFiltroModelo('todos')} className="flex h-8 items-center gap-1.5 rounded-sm bg-foreground px-2.5 text-xs font-medium text-background">
+                  Modelo: {filtroModelo} <X className="size-3.5" />
+                </button>
+              )}
+              {filtroCor !== 'todas' && (
+                <button type="button" onClick={() => setFiltroCor('todas')} className="flex h-8 items-center gap-1.5 rounded-sm bg-foreground px-2.5 text-xs font-medium text-background">
+                  <span aria-hidden className="size-3 rounded-[2px] border border-background/40" style={{ backgroundColor: getHexColor(filtroCor) }} />
+                  Cor: {filtroCor} <X className="size-3.5" />
+                </button>
+              )}
+              {filtrando && (
+                <Button variant="ghost" size="sm" onClick={() => { setBusca(""); setFiltroModelo("todos"); setFiltroCor("todas"); }}>
+                  Limpar filtros
+                </Button>
+              )}
+            </div>
+          </div>
 
-                                                                            {/* Step 2: Controle QA */}
-                                                                            <div className="relative flex md:flex-col items-start md:items-center gap-3 md:gap-2 z-10 w-full md:w-1/4">
-                                                                                <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border-2 border-emerald-500 flex items-center justify-center font-bold text-xs shadow-sm shrink-0">
-                                                                                     2
-                                                                                </div>
-                                                                                <div className="text-left md:text-center">
-                                                                                    <p className="font-bold text-xs text-foreground">Controle QA</p>
-                                                                                    <p className="text-[10px] text-muted-foreground font-medium">Por: {moto.supervisor?.nome?.split(' ')[0] || 'N/A'}</p>
-                                                                                </div>
-                                                                            </div>
-
-                                                                            {/* Step 3: Etiquetagem */}
-                                                                            <div className="relative flex md:flex-col items-start md:items-center gap-3 md:gap-2 z-10 w-full md:w-1/4">
-                                                                                <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border-2 border-emerald-500 flex items-center justify-center font-bold text-xs shadow-sm shrink-0">
-                                                                                     3
-                                                                                </div>
-                                                                                <div className="text-left md:text-center">
-                                                                                    <p className="font-bold text-xs text-foreground">Etiquetagem</p>
-                                                                                    <p className="text-[10px] text-muted-foreground font-medium">Etiqueta Aplicada</p>
-                                                                                </div>
-                                                                            </div>
-
-                                                                            {/* Step 4: Estoque */}
-                                                                            <div className="relative flex md:flex-col items-start md:items-center gap-3 md:gap-2 z-10 w-full md:w-1/4">
-                                                                                <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground border-2 border-primary flex items-center justify-center font-bold text-xs shadow-md shadow-blue-500/20 shrink-0">
-                                                                                     4
-                                                                                </div>
-                                                                                <div className="text-left md:text-center">
-                                                                                    <p className="font-bold text-xs text-info">Em Estoque</p>
-                                                                                    <p className="text-[10px] text-muted-foreground font-medium truncate max-w-[120px]">{moto.localizacao || 'Pátio de Estoque'}</p>
-                                                                                    <p className="text-[9px] text-muted-foreground">{new Date(moto.updated_at).toLocaleDateString()}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* Histórico de Qualidade */}
-                                                                    <div className="space-y-4">
-                                                                        <h4 className="text-xs font-black text-muted-foreground uppercase tracking-wider border-b border-border pb-2 flex items-center gap-1.5">
-                                                                            <Wrench className="w-4 h-4 text-muted-foreground"/> Histórico de Qualidade & Reparos
-                                                                        </h4>
-
-                                                                        {motoDetalhes?.rework_count > 0 && (
-                                                                            <div className="bg-amber-500/10 border border-amber-500/25 text-amber-800 dark:text-amber-300 p-4 rounded-xl flex items-start gap-3">
-                                                                                <div className="p-1.5 bg-amber-500/20 rounded-lg text-amber-600 dark:text-amber-400 shrink-0">
-                                                                                    <RotateCcw className="w-4 h-4"/>
-                                                                                </div>
-                                                                                <div>
-                                                                                    <p className="text-sm font-bold">Retrabalhos na Linha</p>
-                                                                                    <p className="text-xs text-amber-700/80 dark:text-amber-300/85 mt-0.5 leading-relaxed">
-                                                                                        Este veículo retornou <strong className="text-amber-900 dark:text-amber-200">{motoDetalhes.rework_count}x</strong> para a linha de montagem para correções durante a inspeção.
-                                                                                    </p>
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-
-                                                                        {motoDetalhes?.tecnico_reparo && (
-                                                                            <div className="bg-info/10 border border-info/20 text-foreground/90 p-4 rounded-xl space-y-2">
-                                                                                <div className="flex items-center gap-2 text-xs font-bold text-info uppercase tracking-wider">
-                                                                                    <Wrench className="w-4 h-4"/> Último Reparo Concluído
-                                                                                </div>
-                                                                                <p className="text-xs text-muted-foreground leading-relaxed bg-card p-2.5 rounded-lg border border-border">
-                                                                                    &quot;{motoDetalhes.observacoes || "Sem observações detalhadas registradas."}&quot;
-                                                                                </p>
-                                                                                <div className="text-[10px] text-muted-foreground">
-                                                                                    Técnico Responsável: <strong className="text-muted-foreground">{motoDetalhes.tecnico_reparo}</strong>
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-
-                                                                        {historicoAvarias.length > 0 ? (
-                                                                            <div className="space-y-3">
-                                                                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Histórico Detalhado de Falhas</p>
-                                                                                <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1">
-                                                                                    {historicoAvarias.map((av, idx) => (
-                                                                                        <div key={idx} className="bg-red-500/5 dark:bg-red-500/5 p-3.5 rounded-xl border border-red-500/10 dark:border-red-500/10 text-sm">
-                                                                                            <div className="flex justify-between items-start mb-1.5">
-                                                                                                <span className="font-bold text-red-600 dark:text-red-400 capitalize text-[10px] bg-red-500/10 dark:bg-red-500/20 px-2 py-0.5 rounded-md">
-                                                                                                    {av.tipo_avaria.replace('avaria_', '').replace('_', ' ')}
-                                                                                                </span>
-                                                                                                <span className="text-[10px] text-muted-foreground">{new Date(av.created_at).toLocaleDateString()}</span>
-                                                                                            </div>
-                                                                                            <p className="text-xs text-muted-foreground italic">&quot;{av.descricao_problema}&quot;</p>
-                                                                                            
-                                                                                            {av.descricao_solucao && (
-                                                                                                <div className="mt-2.5 pt-2 border-t border-red-500/10 dark:border-red-500/10">
-                                                                                                    <p className="text-xs text-emerald-600 dark:text-emerald-400 leading-relaxed">
-                                                                                                        <strong className="font-bold">Solução Aplicada:</strong> {av.descricao_solucao}
-                                                                                                    </p>
-                                                                                                </div>
-                                                                                            )}
-                                                                                            {av.data_resolucao && (
-                                                                                                <div className="mt-2 text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                                                                                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500"/> Resolvido por <strong className="text-emerald-700 dark:text-emerald-300">{av.tecnico_nome}</strong> em {new Date(av.data_resolucao).toLocaleDateString()}
-                                                                                                </div>
-                                                                                            )}
-                                                                                        </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            </div>
-                                                                        ) : (
-                                                                            !motoDetalhes?.rework_count && !motoDetalhes?.tecnico_reparo && (
-                                                                                <div className="text-center py-8 text-muted-foreground bg-muted/50 rounded-xl border border-dashed border-border">
-                                                                                    <CheckCircle2 className="w-10 h-10 mx-auto mb-2.5 text-emerald-500/50"/>
-                                                                                    <p className="font-bold text-sm text-foreground/90">Veículo de Primeira Linha</p>
-                                                                                    <p className="text-xs mt-0.5">Nenhum defeito ou retrabalho foi registrado para esta moto.</p>
-                                                                                </div>
-                                                                            )
-                                                                        )}
-                                                                    </div>
-                                                                </>
-                                                            ) : (
-                                                                <div className="space-y-5 py-2 animate-in fade-in duration-300">
-                                                                    <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl text-amber-800 dark:text-amber-300 flex gap-3">
-                                                                        <AlertCircle className="w-6 h-6 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
-                                                                        <div>
-                                                                             <h4 className="font-bold text-sm">Atenção: Reversão de Status</h4>
-                                                                             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                                                                                  Ao reverter a moto para a etapa de Etiquetagem, ela sairá do Estoque Disponível e voltará para a fila de impressão. A sua localização será alterada para <strong>Pátio Montada (Aguardando Etiqueta)</strong>.
-                                                                             </p>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* Formulário de Reversão */}
-                                                                    <div className="space-y-4">
-                                                                         <div className="space-y-2">
-                                                                              <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">
-                                                                                   Selecione o Motivo da Reversão
-                                                                              </label>
-                                                                              <Select value={reverterMotivo} onValueChange={setReverterMotivo}>
-                                                                                   <SelectTrigger className="w-full h-11 border-border bg-card">
-                                                                                        <SelectValue placeholder="Selecione um motivo..." />
-                                                                                   </SelectTrigger>
-                                                                                   <SelectContent>
-                                                                                        <SelectItem value="etiqueta_danificada">Etiqueta física danificada ou ilegível</SelectItem>
-                                                                                        <SelectItem value="erro_dados">Erro nos dados impressos na etiqueta</SelectItem>
-                                                                                        <SelectItem value="defeito_detectado">Defeito físico ou visual detectado no estoque</SelectItem>
-                                                                                        <SelectItem value="outro">Outro motivo (especificar abaixo)</SelectItem>
-                                                                                   </SelectContent>
-                                                                              </Select>
-                                                                         </div>
-
-                                                                         {reverterMotivo === "outro" && (
-                                                                              <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
-                                                                                   <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">
-                                                                                        Especifique o Motivo
-                                                                                   </label>
-                                                                                   <Input 
-                                                                                        placeholder="Digite o motivo detalhado..."
-                                                                                        value={reverterMotivoCustom}
-                                                                                        onChange={e => setReverterMotivoCustom(e.target.value)}
-                                                                                        className="h-11 border-border bg-card"
-                                                                                   />
-                                                                              </div>
-                                                                         )}
-
-                                                                         {/* Declaração de Reversão */}
-                                                                         <label className="flex items-start gap-3 p-3.5 rounded-xl border border-amber-500/10 bg-amber-500/5 cursor-pointer select-none">
-                                                                              <input 
-                                                                                   type="checkbox"
-                                                                                   checked={declaracaoReverter}
-                                                                                   onChange={(e) => setDeclaracaoReverter(e.target.checked)}
-                                                                                   className="mt-1 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 dark:border-slate-700"
-                                                                              />
-                                                                              <span className="text-xs font-medium text-muted-foreground leading-normal">
-                                                                                   Confirmo que esta moto deve retornar para a etapa de Etiquetagem e todas as áreas operacionais correspondentes serão notificadas desta alteração.
-                                                                              </span>
-                                                                         </label>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-
-                                                        {/* Footer com Ação de Reversão */}
-                                                        <DialogFooter className="p-4 bg-muted/50 border-t border-border flex justify-between items-center w-full gap-2 sm:gap-0">
-                                                            {!isRevertingConfirm ? (
-                                                                <>
-                                                                    {podeEditar ? (
-                                                                    <Button 
-                                                                        variant="outline" 
-                                                                        onClick={() => setIsRevertingConfirm(true)}
-                                                                        className="text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-900/40 dark:hover:bg-amber-950/40 font-bold flex items-center gap-2 h-10 mr-auto"
-                                                                    >
-                                                                        <RotateCcw className="w-4 h-4"/>
-                                                                        Reverter para Etiquetagem
-                                                                    </Button>
-                                                                    ) : <span className="mr-auto" />}
-                                                                    <Button variant="ghost" onClick={() => setMotoDetalhes(null)} className="h-10">
-                                                                        Fechar
-                                                                    </Button>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <Button 
-                                                                        variant="ghost" 
-                                                                        onClick={() => setIsRevertingConfirm(false)}
-                                                                        className="h-10 text-muted-foreground font-bold"
-                                                                        disabled={revertendo}
-                                                                    >
-                                                                        Voltar aos Detalhes
-                                                                    </Button>
-                                                                    <div className="flex gap-2">
-                                                                         <Button variant="ghost" onClick={() => setMotoDetalhes(null)} className="h-10" disabled={revertendo}>
-                                                                             Fechar
-                                                                         </Button>
-                                                                         <Button 
-                                                                             onClick={() => handleReverterEtiquetagem(motoDetalhes)}
-                                                                             disabled={!declaracaoReverter || (reverterMotivo === "outro" && !reverterMotivoCustom.trim()) || revertendo}
-                                                                             className={`h-10 font-bold ${
-                                                                                  declaracaoReverter && (reverterMotivo !== "outro" || reverterMotivoCustom.trim())
-                                                                                       ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-600/20' 
-                                                                                       : 'bg-slate-100 text-muted-foreground dark:bg-slate-800 dark:text-slate-600'
-                                                                             }`}
-                                                                         >
-                                                                              {revertendo ? "Revertendo..." : "Confirmar Reversão"}
-                                                                         </Button>
-                                                                    </div>
-                                                                </>
-                                                            )}
-                                                        </DialogFooter>
-                                                    </DialogContent>
-                                                </Dialog>
-
-                                                {podeReimprimir && (
-                                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => handleReimprimir(moto)} disabled={reimprimindo === moto.id} title="Reimprimir etiqueta" aria-label="Reimprimir etiqueta">
-                                                      {reimprimindo === moto.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Printer className="w-4 h-4"/>}
-                                                  </Button>
-                                                )}
-
-                                                {podeEditar && (
-                                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-warning" onClick={() => handleAbrirEditar(moto)} title="Editar moto" aria-label="Editar moto">
-                                                      <Pencil className="w-4 h-4"/>
-                                                  </Button>
-                                                )}
-
-                                                {podeExpedir && (
-                                                  <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground h-8 text-xs font-bold" onClick={() => setMotoSaida(moto)}>
-                                                      <Truck className="w-3 h-3 mr-2"/> EXPEDIR
-                                                  </Button>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))
+          {carregando ? (
+            <div className="space-y-2 p-4">{[1, 2, 3].map(i => <div key={i} className="h-14 animate-pulse rounded-sm bg-muted" />)}</div>
+          ) : motosFiltradas.length === 0 ? (
+            <div className="p-4">
+              <EmptyState
+                icone={Warehouse}
+                titulo={motos.length === 0 ? "Pátio vazio" : "Nenhuma moto com os filtros atuais"}
+                descricao={motos.length === 0 ? "Motos etiquetadas na Etiquetagem (E4) aparecem aqui." : "Limpe os filtros ou toque em outra célula da matriz."}
+                compacto
+              />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th scope="col" className="rotulo px-4 py-2.5 font-semibold text-sutil">Moto</th>
+                    <th scope="col" className="rotulo px-3 py-2.5 font-semibold text-sutil">Cores</th>
+                    <th scope="col" className="rotulo px-3 py-2.5 font-semibold text-sutil">Passagem</th>
+                    <th scope="col" className="rotulo px-3 py-2.5 font-semibold text-sutil">No pátio</th>
+                    <th scope="col" className="rotulo px-3 py-2.5 font-semibold text-sutil">Origem</th>
+                    <th scope="col" className="rotulo px-4 py-2.5 text-right font-semibold text-sutil">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {motosFiltradas.slice(0, limiteLista).map((moto) => {
+                    const dias = diasParada(moto);
+                    return (
+                      <tr key={moto.id} className="hover:bg-accent/40">
+                        <td className="px-4 py-2.5">
+                          <p className="font-semibold">{moto.modelo}</p>
+                          <PlacaChassi chassi={moto.sku} tamanho="sm" className="mt-1" />
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <p className="flex items-center gap-2">
+                            <span aria-hidden className="size-4 shrink-0 rounded-[3px] border border-foreground/25" style={{ backgroundColor: getHexColor(moto.cor || "") }} />
+                            <span className="font-medium">{moto.cor || '—'}</span>
+                          </p>
+                          <p className="mt-0.5 pl-6 text-xs text-sutil">Banco: {moto.cor_banco || '—'}</p>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <div className="flex flex-wrap gap-1">
+                            {(moto.rework_count || 0) > 0 && <span className="flex items-center gap-1 rounded-sm border border-serio/60 px-1.5 py-px text-xs"><RotateCcw className="size-3 text-serio" /> Retrabalho {moto.rework_count}x</span>}
+                            {moto.tecnico_reparo && <span className="flex items-center gap-1 rounded-sm border border-info/50 px-1.5 py-px text-xs"><Wrench className="size-3 text-info" /> Reparada</span>}
+                            {!moto.rework_count && !moto.tecnico_reparo && <span className="rounded-sm border px-1.5 py-px text-xs">1ª passagem</span>}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <p className="flex items-center gap-1.5 font-mono text-sm tabular-nums">
+                            {dias >= 30 && <Led estado="atencao" className="size-2" />}
+                            {dias} d
+                          </p>
+                          <p className="text-xs text-sutil">desde {data(moto.updated_at)}</p>
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                          <p>Montagem: <span className="text-foreground">{moto.montador?.nome?.split(' ')[0] || '—'}</span></p>
+                          <p>Qualidade: <span className="text-foreground">{moto.supervisor?.nome?.split(' ')[0] || '—'}</span></p>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleVerDetalhes(moto)} title="Ficha da moto" aria-label="Ficha da moto">
+                              <FileText className="size-4" />
+                            </Button>
+                            {podeReimprimir && (
+                              <Button variant="ghost" size="icon" onClick={() => handleReimprimir(moto)} disabled={reimprimindo === moto.id} title="Reimprimir etiqueta" aria-label="Reimprimir etiqueta">
+                                {reimprimindo === moto.id ? <Loader2 className="size-4 animate-spin" /> : <Printer className="size-4" />}
+                              </Button>
                             )}
-                        </TableBody>
-                    </Table>
+                            {podeEditar && (
+                              <Button variant="ghost" size="icon" onClick={() => handleAbrirEditar(moto)} title="Editar moto" aria-label="Editar moto">
+                                <Pencil className="size-4" />
+                              </Button>
+                            )}
+                            {podeExpedir && (
+                              <Button size="sm" variant="grafite" className="ml-1 font-semibold" onClick={() => setMotoSaida(moto)}>
+                                <Truck className="size-3.5" /> EXPEDIR
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {motosFiltradas.length > limiteLista && (
+                <div className="flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+                  <span className="text-sutil">Mostrando {limiteLista} de {motosFiltradas.length}. Use a matriz ou a busca para ir direto ao que procura.</span>
+                  <Button variant="outline" size="sm" onClick={() => setLimiteLista((n) => n + 60)}>Mostrar mais 60</Button>
                 </div>
-            </CardContent>
-        </Card>
+              )}
+            </div>
+          )}
+        </Painel>
 
-        {/* Modal de Saída */}
+        {/* FICHA DA MOTO */}
+        <Dialog open={!!motoDetalhes} onOpenChange={(open) => !open && !revertendo && setMotoDetalhes(null)}>
+          <DialogContent className="max-h-[92vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
+            {motoDetalhes && (
+              <>
+                <div className="space-y-3 border-b border-white/10 bg-sidebar p-5 text-white">
+                  <p className="rotulo text-white/60">Ficha da moto · Estoque (E5)</p>
+                  <DialogTitle className="text-2xl font-semibold leading-tight text-white">{motoDetalhes.modelo}</DialogTitle>
+                  <DialogDescription className="sr-only">Dados, caminho na linha e histórico de qualidade da moto.</DialogDescription>
+                  <PlacaChassi chassi={motoDetalhes.sku} tamanho="md" />
+                </div>
+
+                <div className="max-h-[62vh] space-y-6 overflow-y-auto p-5">
+                  {!isRevertingConfirm ? (
+                    <>
+                      <dl className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                        <div>
+                          <dt className="rotulo text-sutil">Carenagem</dt>
+                          <dd className="mt-1.5 flex items-center gap-2 text-sm font-medium">
+                            <span aria-hidden className="size-4 rounded-[3px] border border-foreground/25" style={{ backgroundColor: getHexColor(motoDetalhes.cor || "") }} />
+                            {motoDetalhes.cor || '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="rotulo text-sutil">Banco</dt>
+                          <dd className="mt-1.5 flex items-center gap-2 text-sm font-medium">
+                            <span aria-hidden className="size-4 rounded-[3px] border border-foreground/25" style={{ backgroundColor: getHexColor(motoDetalhes.cor_banco || "") }} />
+                            {motoDetalhes.cor_banco || '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="rotulo text-sutil">Ano-modelo</dt>
+                          <dd className="mt-1.5 text-sm font-medium">{motoDetalhes.ano || '—'}</dd>
+                        </div>
+                        <div>
+                          <dt className="rotulo text-sutil">Local</dt>
+                          <dd className="mt-1.5 text-sm font-medium">{motoDetalhes.localizacao || 'Pátio de Estoque'}</dd>
+                        </div>
+                      </dl>
+
+                      <div className="space-y-3">
+                        <p className="rotulo text-sutil">Caminho na linha</p>
+                        <ol className="relative grid gap-3 sm:grid-cols-5">
+                          {[
+                            { codigo: "E1", titulo: "Entrada", texto: data(motoDetalhes.created_at) },
+                            { codigo: "E2", titulo: "Montagem", texto: motoDetalhes.montador?.nome?.split(' ')[0] || '—' },
+                            { codigo: "E3", titulo: "Qualidade", texto: motoDetalhes.supervisor?.nome?.split(' ')[0] || '—' },
+                            { codigo: "E4", titulo: "Etiquetagem", texto: "etiqueta aplicada" },
+                            { codigo: "E5", titulo: "Estoque", texto: `desde ${data(motoDetalhes.updated_at)}` },
+                          ].map((e, i, lista) => (
+                            <li key={e.codigo} className="relative flex items-start gap-2.5 sm:flex-col sm:gap-1.5">
+                              {i < lista.length - 1 && <span aria-hidden className="absolute left-[13px] top-6 hidden h-px w-[calc(100%-8px)] bg-border sm:block" />}
+                              <span className="codigo-estacao relative z-10">{e.codigo}</span>
+                              <span className="min-w-0">
+                                <span className="block text-xs font-semibold">{e.titulo}</span>
+                                <span className="block truncate text-xs text-sutil">{e.texto}</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        <p className="rotulo text-sutil">Histórico de qualidade</p>
+                        {(motoDetalhes.rework_count || 0) > 0 && (
+                          <p className="rounded-sm border border-l-[3px] border-l-serio px-3 py-2 text-sm text-muted-foreground">
+                            Voltou <strong className="font-semibold text-foreground">{motoDetalhes.rework_count}x</strong> para correções na linha durante a inspeção.
+                          </p>
+                        )}
+                        {motoDetalhes.tecnico_reparo && (
+                          <div className="rounded-sm border border-l-[3px] border-l-info px-3 py-2 text-sm text-muted-foreground">
+                            <p>Reparada por <strong className="font-semibold text-foreground">{motoDetalhes.tecnico_reparo}</strong></p>
+                            <p className="mt-1 italic">&quot;{motoDetalhes.observacoes || "Sem observações registradas."}&quot;</p>
+                          </div>
+                        )}
+                        {historicoAvarias.map((av) => (
+                          <div key={av.id} className="space-y-1 rounded-sm border border-l-[3px] border-l-destructive px-3 py-2 text-sm">
+                            <p className="flex items-center justify-between gap-2">
+                              <span className="font-semibold">{rotuloAvaria(av.tipo_avaria)}</span>
+                              <span className="text-xs text-sutil">{data(av.created_at)}</span>
+                            </p>
+                            <p className="text-muted-foreground">&quot;{av.descricao_problema}&quot;</p>
+                            {av.descricao_solucao && <p className="text-muted-foreground"><span className="font-medium text-foreground">Solução:</span> {av.descricao_solucao}</p>}
+                            {av.data_resolucao && <p className="text-xs text-sutil">Resolvido por {av.tecnico_nome || '—'} em {data(av.data_resolucao)}</p>}
+                          </div>
+                        ))}
+                        {!(motoDetalhes.rework_count || 0) && !motoDetalhes.tecnico_reparo && historicoAvarias.length === 0 && (
+                          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <CheckCircle2 className="size-4 text-success" /> Primeira passagem: nenhum retrabalho ou avaria registrado.
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="space-y-5">
+                      <div className="flex gap-3 rounded-md border border-l-[3px] border-l-warning p-4">
+                        <AlertCircle className="mt-0.5 size-5 shrink-0 text-warning" />
+                        <div>
+                          <p className="text-sm font-semibold">Devolver para a Etiquetagem</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            A moto sai do estoque disponível e volta para a fila de impressão (E4), com o local <strong className="font-semibold text-foreground">Pátio Montada (Aguardando Etiqueta)</strong>.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="rotulo text-sutil">Motivo da reversão</label>
+                        <Select value={reverterMotivo} onValueChange={setReverterMotivo}>
+                          <SelectTrigger className="h-11 w-full"><SelectValue placeholder="Selecione um motivo..." /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="etiqueta_danificada">Etiqueta física danificada ou ilegível</SelectItem>
+                            <SelectItem value="erro_dados">Erro nos dados impressos na etiqueta</SelectItem>
+                            <SelectItem value="defeito_detectado">Defeito físico ou visual detectado no estoque</SelectItem>
+                            <SelectItem value="outro">Outro motivo (especificar abaixo)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {reverterMotivo === "outro" && (
+                        <div className="space-y-2">
+                          <label className="rotulo text-sutil">Especifique o motivo</label>
+                          <Input placeholder="Digite o motivo detalhado..." value={reverterMotivoCustom} onChange={e => setReverterMotivoCustom(e.target.value)} className="h-11" />
+                        </div>
+                      )}
+                      <label className={cn("flex cursor-pointer select-none items-start gap-3 rounded-md border p-3.5", declaracaoReverter && "border-foreground")}>
+                        <input type="checkbox" checked={declaracaoReverter} onChange={(e) => setDeclaracaoReverter(e.target.checked)} className="mt-0.5 size-4 accent-[hsl(var(--foreground))]" />
+                        <span className="text-sm text-muted-foreground">Confirmo que esta moto deve voltar para a etapa de Etiquetagem.</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                <DialogFooter className="flex-row items-center gap-2 border-t bg-painel-cabecalho p-4 sm:justify-between">
+                  {!isRevertingConfirm ? (
+                    <>
+                      {podeEditar ? (
+                        <Button variant="outline" onClick={() => setIsRevertingConfirm(true)} className="mr-auto">
+                          <RotateCcw /> Reverter para Etiquetagem
+                        </Button>
+                      ) : <span className="mr-auto" />}
+                      <Button variant="ghost" onClick={() => setMotoDetalhes(null)}>Fechar</Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button variant="ghost" onClick={() => setIsRevertingConfirm(false)} disabled={revertendo} className="mr-auto">Voltar</Button>
+                      <Button
+                        variant="grafite"
+                        onClick={() => handleReverterEtiquetagem(motoDetalhes)}
+                        disabled={!declaracaoReverter || (reverterMotivo === "outro" && !reverterMotivoCustom.trim()) || revertendo}
+                        className="font-semibold"
+                      >
+                        {revertendo ? <><Loader2 className="animate-spin" /> Revertendo...</> : "Confirmar Reversão"}
+                      </Button>
+                    </>
+                  )}
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* EXPEDIÇÃO */}
         <Dialog open={!!motoSaida} onOpenChange={(open) => !open && !expedindo && setMotoSaida(null)}>
-            <DialogContent className="bg-card border-border">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2"><Truck className="w-5 h-5 text-emerald-600"/> Confirmar Expedição</DialogTitle>
-                    <DialogDescription>A moto sai do estoque disponível e fica registrada como expedida.</DialogDescription>
-                </DialogHeader>
-                <div className="py-2">
-                    <p>Deseja dar baixa na moto <strong>{motoSaida?.modelo}</strong>?</p>
-                    <div className="mt-2 bg-muted p-2 rounded text-sm font-mono text-muted-foreground">{motoSaida?.sku}</div>
-                </div>
-                <DialogFooter>
-                    <Button variant="ghost" onClick={() => setMotoSaida(null)} disabled={expedindo}>Cancelar</Button>
-                    <Button onClick={handleDarBaixa} disabled={expedindo} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                        {expedindo ? <><Loader2 className="w-4 h-4 mr-2 animate-spin"/> Registrando...</> : "Confirmar"}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Truck className="size-5" /> Confirmar expedição</DialogTitle>
+              <DialogDescription>A moto sai do estoque disponível e fica registrada como expedida.</DialogDescription>
+            </DialogHeader>
+            {motoSaida && (
+              <div className="space-y-1.5 rounded-md border bg-background/60 p-3">
+                <p className="font-semibold">{motoSaida.modelo}</p>
+                <PlacaChassi chassi={motoSaida.sku} tamanho="sm" />
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setMotoSaida(null)} disabled={expedindo}>Cancelar</Button>
+              <Button variant="grafite" onClick={handleDarBaixa} disabled={expedindo} className="font-semibold">
+                {expedindo ? <><Loader2 className="animate-spin" /> Registrando...</> : "Confirmar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
         </Dialog>
 
-        {/* Modal de Edição QoL */}
+        {/* EDIÇÃO */}
         <Dialog open={!!motoEditando} onOpenChange={(open) => !open && setMotoEditando(null)}>
-            <DialogContent className="bg-card border-border">
-                <DialogHeader>
-                    <DialogTitle className="text-amber-600 flex items-center gap-2">
-                        <Pencil className="w-5 h-5"/> Editar Informações da Moto
-                    </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="bg-muted/50 p-3 rounded-lg border border-border">
-                        <p className="text-xs text-muted-foreground uppercase font-bold">Chassi (VIN / SKU)</p>
-                        <p className="font-mono text-lg font-bold tracking-widest text-foreground">{motoEditando?.sku}</p>
-                    </div>
-
-                    <div className="flex items-center gap-4 border-b border-border pb-3">
-                         <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-                              <input 
-                                   type="radio" 
-                                   checked={!usarCustomModeloEdit} 
-                                   onChange={() => setUsarCustomModeloEdit(false)} 
-                                   className="text-primary focus:ring-ring"
-                              />
-                              Selecionar modelo do catálogo
-                         </label>
-                         <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-                              <input 
-                                   type="radio" 
-                                   checked={usarCustomModeloEdit} 
-                                   onChange={() => setUsarCustomModeloEdit(true)} 
-                                   className="text-primary focus:ring-ring"
-                              />
-                              Digitar modelo manualmente
-                         </label>
-                    </div>
-
-                    {!usarCustomModeloEdit ? (
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase">Modelo do Catálogo</label>
-                            <Select onValueChange={setModeloEdit} value={modeloEdit}>
-                                <SelectTrigger className="w-full">
-                                     <SelectValue placeholder="Selecione um modelo..."/>
-                                </SelectTrigger>
-                                <SelectContent className="max-h-[300px]">
-                                     {MODELOS_CADASTRADOS.map(m => (
-                                          <SelectItem key={m} value={m}>{m}</SelectItem>
-                                     ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    ) : (
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase">Modelo Personalizado</label>
-                            <Input 
-                                 placeholder="Ex: SHI 175 EFI 2026..." 
-                                 value={customModeloEdit} 
-                                 onChange={e => setCustomModeloEdit(e.target.value)} 
-                                 className="uppercase"
-                            />
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase">Cor da Carenagem</label>
-                            <Input 
-                                 placeholder="Ex: Vermelha..." 
-                                 value={corEdit} 
-                                 onChange={e => setCorEdit(e.target.value)} 
-                                 list="catalogo-cores-carenagem"
-                            />
-                            <datalist id="catalogo-cores-carenagem">
-                                {configGeral.coresCarenagem.map(c => <option key={c.nome} value={c.nome}>{c.descricao}</option>)}
-                            </datalist>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase">Cor do Banco</label>
-                            <Input 
-                                 placeholder="Ex: Preto..." 
-                                 value={corBancoEdit} 
-                                 onChange={e => setCorBancoEdit(e.target.value)} 
-                                 list="catalogo-cores-banco"
-                            />
-                            <datalist id="catalogo-cores-banco">
-                                {configGeral.coresBanco.map(c => <option key={c.nome} value={c.nome}>{c.descricao}</option>)}
-                            </datalist>
-                        </div>
-                    </div>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><Pencil className="size-5" /> Editar moto</DialogTitle>
+              <DialogDescription>Corrija modelo e cores. A alteração fica registrada na auditoria.</DialogDescription>
+            </DialogHeader>
+            {motoEditando && <PlacaChassi chassi={motoEditando.sku} tamanho="md" />}
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 border-b pb-3">
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                  <input type="radio" checked={!usarCustomModeloEdit} onChange={() => setUsarCustomModeloEdit(false)} className="accent-[hsl(var(--foreground))]" />
+                  Modelo do catálogo
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                  <input type="radio" checked={usarCustomModeloEdit} onChange={() => setUsarCustomModeloEdit(true)} className="accent-[hsl(var(--foreground))]" />
+                  Digitar manualmente
+                </label>
+              </div>
+              {!usarCustomModeloEdit ? (
+                <div className="space-y-2">
+                  <label className="rotulo text-sutil">Modelo do catálogo</label>
+                  <Select onValueChange={setModeloEdit} value={modeloEdit}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Selecione um modelo..." /></SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      {MODELOS_CADASTRADOS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <DialogFooter>
-                    <Button variant="ghost" onClick={() => setMotoEditando(null)}>Cancelar</Button>
-                    <Button onClick={handleSalvarEdicao} className="bg-amber-600 hover:bg-amber-700 text-white" disabled={salvandoEdit}>
-                        {salvandoEdit ? "Salvando..." : "Salvar Alterações"}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
+              ) : (
+                <div className="space-y-2">
+                  <label className="rotulo text-sutil">Modelo personalizado</label>
+                  <Input placeholder="Ex: SHI 175 EFI 2026..." value={customModeloEdit} onChange={e => setCustomModeloEdit(e.target.value)} className="uppercase" />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="rotulo text-sutil">Cor da carenagem</label>
+                  <Input placeholder="Ex: Vermelha..." value={corEdit} onChange={e => setCorEdit(e.target.value)} list="catalogo-cores-carenagem" />
+                  <datalist id="catalogo-cores-carenagem">
+                    {configGeral.coresCarenagem.map(c => <option key={c.nome} value={c.nome}>{c.descricao}</option>)}
+                  </datalist>
+                </div>
+                <div className="space-y-2">
+                  <label className="rotulo text-sutil">Cor do banco</label>
+                  <Input placeholder="Ex: Preto..." value={corBancoEdit} onChange={e => setCorBancoEdit(e.target.value)} list="catalogo-cores-banco" />
+                  <datalist id="catalogo-cores-banco">
+                    {configGeral.coresBanco.map(c => <option key={c.nome} value={c.nome}>{c.descricao}</option>)}
+                  </datalist>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setMotoEditando(null)}>Cancelar</Button>
+              <Button variant="grafite" onClick={handleSalvarEdicao} disabled={salvandoEdit} className="font-semibold">
+                {salvandoEdit ? "Salvando..." : "Salvar Alterações"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
         </Dialog>
-
       </div>
   );
 }

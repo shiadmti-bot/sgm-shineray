@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BellRing, Boxes, Camera, FileSearch, LayoutGrid, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { BellRing, Boxes, Camera, FileSearch, GraduationCap, Search, ShieldCheck, Sparkles, Workflow } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useUsuarioLogado } from "@/lib/auth";
@@ -16,7 +16,8 @@ const ITENS = [
   { icone: Boxes, titulo: "Inventário do pátio", texto: "Conte o estoque bipando as motos e veja na hora as faltas e sobras." },
   { icone: Camera, titulo: "Fotos nas avarias e na qualidade", texto: "Registre o problema e o reparo com fotos tiradas pelo tablet ou celular." },
   { icone: BellRing, titulo: "Central de notificações", texto: "Pedidos de pausa, retrabalhos, avarias e divergências de inventário chegam no sino." },
-  { icone: LayoutGrid, titulo: "Visual renovado", texto: "Menu por área (recolhível), tema escuro revisado e telas pensadas para tablet." },
+  { icone: Workflow, titulo: "Central da linha e estações E1…E5", texto: "O menu segue o caminho da moto (Entrada, Montagem, Qualidade, Etiquetagem, Estoque) com a quantidade em cada estação. A Central mostra o fluxo, a meta do dia e os alertas." },
+  { icone: GraduationCap, titulo: "Modo guia", texto: "Dicas curtas explicam cada tela. Ligue ou desligue pelo botão Guia no topo." },
 ];
 
 function jaViu(usuarioId: string) {
@@ -64,14 +65,14 @@ export function NovidadesV2() {
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
-            <Sparkles className="size-5 text-primary" /> Bem-vindo à V2 do SGM
+            <Sparkles className="size-5 text-sutil" /> Bem-vindo à V2 do SGM
           </DialogTitle>
           <DialogDescription>O que mudou nesta versão:</DialogDescription>
         </DialogHeader>
         <ul className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
           {ITENS.map(({ icone: Icone, titulo, texto }) => (
             <li key={titulo} className="flex gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-card text-foreground">
                 <Icone className="size-[18px]" />
               </span>
               <span>

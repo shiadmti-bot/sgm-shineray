@@ -21,8 +21,10 @@ etiquetagem, estoque e expedição — com perfis de acesso, auditoria e funcion
   (Supabase Storage, links temporários).
 * **Central de notificações:** pedidos de pausa, retrabalhos, avarias, reparos e divergências de inventário no sino
   (tempo real quando disponível).
-* **Visual renovado:** identidade Shineray (vermelho, preto e branco), menu agrupado por área e recolhível,
-  tema escuro revisado, componentes padronizados e telas pensadas para tablet.
+* **Padrão visual "linha de montagem":** o menu segue o caminho da moto com as estações **E1 Entrada → E2 Montagem →
+  E3 Qualidade → E4 Etiquetagem → E5 Estoque** (desvios AV Avarias e IN Inventário) e mostra quantas motos há em cada uma;
+  lâmpadas de sinalização (Andon), placa do chassi com os 4 dígitos finais em destaque, modo guia com dicas em cada tela,
+  tema claro/escuro e telas pensadas para tablet. Detalhes em [`docs/identidade-visual.md`](docs/identidade-visual.md).
 * **Equipe:** cadastro e redefinição de acesso pelo servidor, último acesso de cada pessoa e desempenho dos últimos 90 dias.
 * **Montagem:** horários pelo relógio do servidor, tempo de pausa registrado (início e fim) e cores salvas na hora.
 
@@ -30,13 +32,14 @@ Para migrar uma instalação da V1, siga [`docs/implantacao-v2.md`](docs/implant
 
 ## 🚀 Módulos
 
-* **Painel:** fluxo em tempo real, meta diária, montagens ao vivo, pausas, alertas e atividade recente.
+* **Central da linha:** mapa do fluxo E1→E5 com a quantidade e o estado de cada estação, produção do dia contra a meta,
+  quadro Andon de alertas, montagens em andamento, fila de inspeção e diário de bordo.
 * **Entrada:** leitura de caixas (leitor USB/Bluetooth ou câmera) com identificação automática do modelo.
 * **Montagem:** fila, retrabalhos prioritários, cronômetro, checklist configurável, pedido de pausa.
 * **Qualidade (QA):** aprovar, devolver para retrabalho ou segregar para avaria, com fotos.
 * **Avarias:** pátio com fotos, registro de reparo e histórico dos últimos 30 dias.
 * **Etiquetagem:** editor visual de etiquetas, impressão em lote e conferência por leitura.
-* **Estoque:** filtros, reimpressão, correções, reversão e expedição.
+* **Estoque:** matriz modelo × cor (cada célula filtra a lista), reimpressão, correções, reversão e expedição.
 * **Inventário, Prontuário, Relatórios, Equipe, Perfis de acesso, Auditoria e Configurações.**
 
 ## 🛠️ Stack Tecnológica
@@ -107,7 +110,7 @@ No driver da impressora (Windows), cadastre um tamanho de papel para cada modelo
 | Perfil padrão | Acesso | Resumo |
 |---------------|--------|--------|
 | **Master** | Senha | Acesso total, inclusive perfis de acesso |
-| **Gestor** | Senha | Painel, estoque, relatórios, equipe, auditoria e configurações |
+| **Gestor** | Senha | Central da linha, estoque, relatórios, equipe, auditoria e configurações |
 | **Supervisor** | Senha | Qualidade, pausas, avarias, etiquetagem, estoque e inventário |
 | **Montador** | Matrícula + PIN | Montagem, entrada e etiquetagem |
 

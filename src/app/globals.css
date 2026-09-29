@@ -3,90 +3,120 @@
 @tailwind utilities;
 
 /*
- * SGM V2 — identidade Shineray (vermelho, preto e branco).
- * Cores em HSL sem "hsl()": o Tailwind aplica a opacidade (ex.: bg-primary/10).
+ * SGM V2 — padrão visual "Linha de montagem"
+ * Chão de fábrica: painéis de instrumento, sinalização Andon, placas de chassi.
+ * Cores em HSL sem "hsl()" para o Tailwind aplicar opacidade (ex.: bg-primary/10).
+ *
+ * Papéis:
+ *  - marca (primary): vermelho Shineray — identidade e ação principal. Não é cor de dado.
+ *  - status (bom/atencao/serio/critico): sinalização Andon, sempre com ícone + texto.
+ *  - etapa-1..5: rampa ordinal (um só matiz) das etapas da moto no fluxo.
  */
 @layer base {
   :root {
-    --background: 240 5% 97%;
-    --foreground: 240 10% 4%;
+    /* Planos */
+    --background: 60 9.7% 93.9%;          /* #F1F1EE concreto */
+    --foreground: 0 0% 4.3%;             /* #0B0B0B */
+    --card: 60 14.3% 98.6%;                /* #FCFCFB painel */
+    --card-foreground: 0 0% 4%;
+    --painel-cabecalho: 60 12% 96%;    /* faixa de título dos painéis */
+    --popover: 60 11% 99%;
+    --popover-foreground: 0 0% 4%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 4%;
-
-    /* Vermelho Shineray */
-    --primary: 0 72% 51%;
+    /* Marca */
+    --primary: 350.2 85.2% 42.4%;            /* #C8102E vermelho Shineray */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 5% 94%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 94%;
-    --muted-foreground: 240 4% 40%;
-    --accent: 240 5% 93%;
-    --accent-foreground: 240 6% 10%;
+    --secondary: 60 8% 91%;
+    --secondary-foreground: 0 0% 4%;
+    --muted: 60 8% 92%;
+    --muted-foreground: 45 2.5% 31.4%;     /* #52514E tinta secundária */
+    --sutil: 51.4 3.1% 44.5%;                /* #75746E rótulos e eixos */
+    --accent: 60 8% 90%;
+    --accent-foreground: 0 0% 4%;
 
-    --destructive: 0 84% 55%;
+    --destructive: 0 61.3% 52.4%;          /* = crítico */
     --destructive-foreground: 0 0% 100%;
-    --success: 142 72% 32%;
+
+    /* Status (Andon) — fixos, sempre com ícone + texto */
+    --success: 120 86.3% 34.3%;            /* bom      #0CA30C */
     --success-foreground: 0 0% 100%;
-    --warning: 35 92% 45%;
-    --warning-foreground: 0 0% 100%;
-    --info: 217 83% 50%;
+    --warning: 40.8 95.7% 53.9%;             /* atenção  #FAB219 */
+    --warning-foreground: 0 0% 4%;
+    --serio: 16.8 79.3% 63.9%;               /* sério    #EC835A */
+    --info: 212.8 67.7% 50.2%;               /* em processo #2A78D6 */
     --info-foreground: 0 0% 100%;
 
-    --border: 240 6% 89%;
-    --input: 240 6% 85%;
-    --ring: 0 72% 51%;
+    /* Etapas da moto (rampa ordinal azul, validada) */
+    --etapa-1: 212.6 76.6% 73.1%;            /* #86B6EF aguardando montagem */
+    --etapa-2: 212.5 75.3% 62%;            /* #5598E7 em montagem */
+    --etapa-3: 212.8 67.7% 50.2%;            /* #2A78D6 inspeção */
+    --etapa-4: 213.1 71.9% 39%;            /* #1C5CAB aguardando etiqueta */
+    --etapa-5: 213.5 77.9% 28.4%;            /* #104281 estoque */
 
-    --sidebar: 0 0% 100%;
-    --sidebar-foreground: 240 5% 26%;
-    --sidebar-border: 240 6% 90%;
-    --sidebar-accent: 0 86% 97%;
-    --sidebar-accent-foreground: 0 74% 42%;
+    --border: 52.5 11.8% 86.7%;              /* #E1E0D9 linha fina */
+    --input: 52 10% 80%;
+    --ring: 350 85% 42%;
 
-    --radius: 0.75rem;
+    /* Menu lateral: grafite nos dois temas */
+    --sidebar: 220 7.7% 7.6%;              /* #121315 */
+    --sidebar-foreground: 228 4% 73%;
+    --sidebar-border: 220 8% 15%;
+    --sidebar-accent: 225 6% 14%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-muted: 225 3% 50%;
+
+    --radius: 0.3125rem;
   }
 
   .dark {
-    /* Carbono: preto com leve profundidade (menos cansativo que o preto puro da V1) */
-    --background: 240 6% 6%;
-    --foreground: 0 0% 96%;
+    --background: 0 0% 5.1%;             /* #0D0D0D */
+    --foreground: 60 9.1% 95.7%;          /* #F5F5F3 */
+    --card: 60 2% 10%;                 /* #1A1A19 */
+    --card-foreground: 60 11% 96%;
+    --painel-cabecalho: 0 0% 12.2%;      /* #1F1F1F */
+    --popover: 60 2% 11%;
+    --popover-foreground: 60 11% 96%;
 
-    --card: 240 5% 9%;
-    --card-foreground: 0 0% 96%;
-    --popover: 240 5% 10%;
-    --popover-foreground: 0 0% 96%;
-
-    --primary: 0 76% 56%;
+    --primary: 354.3 70.5% 53.5%;            /* #DC3545 — branco por cima 4,5:1 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 4% 15%;
-    --secondary-foreground: 0 0% 96%;
-    --muted: 240 4% 14%;
-    --muted-foreground: 240 5% 65%;
-    --accent: 240 4% 16%;
-    --accent-foreground: 0 0% 96%;
+    --secondary: 60 1% 16%;
+    --secondary-foreground: 60 11% 96%;
+    --muted: 60 1% 15%;
+    --muted-foreground: 55 9.1% 74.1%;     /* #C3C2B7 */
+    --sutil: 54 4.7% 58.4%;                /* #9A9990 */
+    --accent: 60 1% 17%;
+    --accent-foreground: 60 11% 96%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 61.3% 52.4%;
     --destructive-foreground: 0 0% 100%;
-    --success: 142 64% 45%;
-    --success-foreground: 144 80% 8%;
-    --warning: 38 92% 55%;
-    --warning-foreground: 30 90% 8%;
-    --info: 213 94% 64%;
-    --info-foreground: 222 80% 10%;
 
-    --border: 240 4% 17%;
-    --input: 240 4% 21%;
-    --ring: 0 76% 56%;
+    --success: 120 86.3% 34.3%;
+    --success-foreground: 0 0% 100%;
+    --warning: 40.8 95.7% 53.9%;
+    --warning-foreground: 0 0% 4%;
+    --serio: 16.8 79.3% 63.9%;
+    --info: 212.8 76.8% 56.1%;               /* #3987E5 */
+    --info-foreground: 0 0% 4%;
 
-    --sidebar: 240 6% 7%;
-    --sidebar-foreground: 240 5% 72%;
-    --sidebar-border: 240 4% 14%;
-    --sidebar-accent: 0 45% 14%;
-    --sidebar-accent-foreground: 0 90% 72%;
+    /* No escuro a rampa inverte: etapas mais avançadas ficam mais claras */
+    --etapa-1: 213.6 72.3% 33.9%;            /* #184F95 */
+    --etapa-2: 213.1 67.5% 44.7%;            /* #256ABF */
+    --etapa-3: 212.8 76.8% 56.1%;            /* #3987E5 */
+    --etapa-4: 212.6 77% 67.6%;            /* #6DA7EC */
+    --etapa-5: 212.8 79.6% 78.8%;            /* #9EC5F4 */
+
+    --border: 60 2.3% 16.9%;               /* #2C2C2A */
+    --input: 60 2% 23%;
+    --ring: 355 70% 53%;
+
+    --sidebar: 240 4.8% 4.1%;              /* #0A0A0B */
+    --sidebar-foreground: 228 4% 73%;
+    --sidebar-border: 240 4% 12%;
+    --sidebar-accent: 240 4% 11%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-muted: 225 3% 50%;
   }
 }
 
@@ -99,11 +129,38 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
-    font-feature-settings: "cv11", "ss01";
+    font-feature-settings: "kern", "liga";
   }
-  /* Números alinhados em tabelas e indicadores */
-  .tabular-nums {
-    font-variant-numeric: tabular-nums;
+  h1, h2, h3 {
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+  /* Rótulo técnico: caixa alta condensada (seções, cabeçalhos de painel, legendas) */
+  .rotulo {
+    @apply font-rotulo text-[11px] font-semibold uppercase leading-none tracking-[0.12em];
+  }
+  /* Código de estação (E1…E5) */
+  .codigo-estacao {
+    @apply inline-flex h-5 min-w-7 items-center justify-center rounded-sm bg-foreground px-1 font-mono text-[10px] font-semibold leading-none text-background;
+  }
+  /* Fundo de prancheta técnica (malha fina) */
+  .fundo-tecnico {
+    background-image:
+      linear-gradient(to right, hsl(var(--foreground) / 0.045) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--foreground) / 0.045) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .fundo-tecnico-escuro {
+    background-image:
+      linear-gradient(to right, rgb(255 255 255 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  /* Faixa de sinalização (zebrado) para estados bloqueados */
+  .faixa-sinalizacao {
+    background-image: repeating-linear-gradient(135deg, hsl(var(--warning)) 0 8px, hsl(0 0% 8%) 8px 16px);
   }
 }
 
@@ -118,6 +175,58 @@
   /* Alvos de toque confortáveis nos tablets da linha */
   .alvo-toque {
     min-height: 44px;
+  }
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Esteira: tracejado em movimento entre as estações do fluxo.
+   Cor ajustável com a variável --cor-esteira; .esteira-parada congela o movimento. */
+@keyframes esteira {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 16px 0;
+  }
+}
+@keyframes esteira-vertical {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 16px;
+  }
+}
+.esteira {
+  background-image: repeating-linear-gradient(90deg, var(--cor-esteira, hsl(var(--sutil) / 0.7)) 0 8px, transparent 8px 16px);
+  background-size: 16px 100%;
+  background-repeat: repeat-x;
+  animation: esteira 0.9s linear infinite;
+}
+.esteira-vertical {
+  background-image: repeating-linear-gradient(180deg, var(--cor-esteira, hsl(var(--sutil) / 0.7)) 0 8px, transparent 8px 16px);
+  background-size: 100% 16px;
+  background-repeat: repeat-y;
+  animation: esteira-vertical 0.9s linear infinite;
+}
+.esteira-parada {
+  animation-play-state: paused;
+}
+@keyframes led-alerta {
+  50% {
+    opacity: 0.35;
+  }
+}
+.led-piscando {
+  animation: led-alerta 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .esteira,
+  .esteira-vertical,
+  .led-piscando {
+    animation: none;
   }
 }
 

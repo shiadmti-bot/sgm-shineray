@@ -3,15 +3,16 @@
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { PageHeader } from "@/components/sgm/PageHeader";
+import { EmptyState } from "@/components/sgm/EmptyState";
+import { Led } from "@/components/sgm/Led";
+import { Painel } from "@/components/sgm/Painel";
+import { PlacaChassi } from "@/components/sgm/PlacaChassi";
+import { StatusBadge } from "@/components/sgm/StatusBadge";
 import { useZxing } from "react-zxing";
-import { 
-  ScanBarcode, ArrowRight, CheckCircle2, Loader2, Camera, XCircle, Hash, PackagePlus, Box, History, AlertTriangle
-} from "lucide-react";
+import { ScanBarcode, ArrowRight, CheckCircle2, Loader2, Camera, XCircle, History, AlertTriangle, TriangleAlert } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { identificarModelo, listarModelos } from "@/lib/model-decoder"; // Importando a nova inteligência
 import { registrarLog } from "@/lib/logger";
 import { tocarSom } from "@/lib/sons";
@@ -38,6 +39,18 @@ const extrairMetadadosVIN = (vin: string) => {
   return { ano, fabrica };
 };
 
+interface Metadados {
+  ano: string;
+  fabrica: string;
+  origem?: string;
+}
+
+interface RegistroEntrada {
+  sku: string;
+  modelo: string;
+  ano?: string | null;
+}
+
 interface Leitura {
   chassi: string;
   modelo: string;
@@ -53,14 +66,14 @@ export default function ScannerPage() {
   const ultimaLeituraCamera = useRef<{ codigo: string; em: number }>({ codigo: "", em: 0 });
   const [loading, setLoading] = useState(false);
   const [codigo, setCodigo] = useState("");
-  const [ultimoRegistro, setUltimoRegistro] = useState<any>(null);
+  const [ultimoRegistro, setUltimoRegistro] = useState<RegistroEntrada | null>(null);
   const [cameraAtiva, setCameraAtiva] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Estados para QoL de Modelo Desconhecido
   const [modalModeloDesconhecidoOpen, setModalModeloDesconhecidoOpen] = useState(false);
   const [chassiPendente, setChassiPendente] = useState("");
-  const [metadadosPendentes, setMetadadosPendentes] = useState<any>(null);
+  const [metadadosPendentes, setMetadadosPendentes] = useState<Metadados | null>(null);
   const [modeloSelecionado, setModeloSelecionado] = useState("");
   const [customModelo, setCustomModelo] = useState("");
   const [usarCustomModelo, setUsarCustomModelo] = useState(false);
@@ -160,7 +173,7 @@ export default function ScannerPage() {
 
       await registrarMotoNoBanco(chassi, modeloIdentificado, { ...metadados, origem });
 
-    } catch (err: any) {
+    } catch (err) {
       console.error("Erro scanner:", err);
       toast.error("Erro ao registrar entrada."); 
       setLoading(false);
@@ -168,7 +181,7 @@ export default function ScannerPage() {
     }
   };
 
-  const registrarMotoNoBanco = async (chassi: string, modelo: string, metadados: any) => {
+  const registrarMotoNoBanco = async (chassi: string, modelo: string, metadados: Metadados | null) => {
     setLoading(true);
     try {
       // 3. Registro na Fila
@@ -177,7 +190,7 @@ export default function ScannerPage() {
         .insert({
           sku: chassi,
           modelo: modelo,
-          ano: metadados.ano,
+          ano: metadados?.ano ?? null,
           localizacao: 'Recebimento / CD', 
           status: 'aguardando_montagem',
           montador_id: null,
@@ -197,18 +210,12 @@ export default function ScannerPage() {
         throw erroInsert;
       }
 
-      await registrarLog('ENTRADA_ESTOQUE', chassi, { modelo, ano: metadados.ano, fabrica: metadados.fabrica, origem: metadados.origem || 'manual' });
+      await registrarLog('ENTRADA_ESTOQUE', chassi, { modelo, ano: metadados?.ano, fabrica: metadados?.fabrica, origem: metadados?.origem || 'manual' });
       registrarLeitura(chassi, modelo, true, 'Adicionada à fila');
 
-      // 4. Feedback Visual
-      setUltimoRegistro({
-        ...novaMoto,
-        fabrica: metadados.fabrica,
-        // Lógica simples de linha baseada no modelo para preencher o visual
-        linha_destino: modelo.includes('SCOOTER') ? 'Linha Scooter' : 
-                       modelo.includes('ATV') ? 'Linha Off-Road' : 'Linha Geral',
-      });
-      
+      // 4. Resultado na tela
+      setUltimoRegistro({ sku: novaMoto.sku, modelo: novaMoto.modelo, ano: novaMoto.ano });
+
       toast.success("Entrada Registrada!", {
         description: `${modelo} enviada para montagem.`
       });
@@ -216,7 +223,7 @@ export default function ScannerPage() {
       // Efeito Sonoro
       tocarSom('sucesso');
 
-    } catch (err: any) {
+    } catch (err) {
       console.error("Erro insert:", err);
       tocarSom('erro');
       registrarLeitura(chassi, modelo, false, 'Erro ao registrar');
@@ -232,180 +239,146 @@ export default function ScannerPage() {
     if(codigo) processarChassi(codigo);
   };
 
+  const registradas = leituras.filter(l => l.ok).length;
+
   return (
-      <div className="flex min-h-[calc(100vh-160px)] flex-col gap-6 animate-in fade-in duration-500">
+      <div className="flex flex-col gap-6 pb-16">
         <PageHeader
-          icone={PackagePlus}
-          titulo="Recebimento de caixas"
-          descricao={<>Bipe o chassi na entrada do CD. A moto entra na fila como <strong className="text-foreground">Aguardando montagem</strong>.</>}
+          titulo="Entrada"
+          descricao={<>Bipe o chassi de cada caixa recebida no CD. A moto entra no fim da fila da Montagem (E2) como <strong className="font-semibold text-foreground">Aguardando montagem</strong>.</>}
           acoes={
-            <Badge variant={cameraAtiva ? "destructive" : "outline"} className="h-8 px-3">
-              {cameraAtiva ? "Lendo pela câmera…" : "Pronto para ler"}
-            </Badge>
+            <span className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm font-medium">
+              <Led estado={loading ? "processo" : cameraAtiva ? "processo" : "bom"} piscando={loading} />
+              {loading ? "Registrando…" : cameraAtiva ? "Lendo pela câmera" : "Leitor pronto"}
+            </span>
           }
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
-          
-          {/* ESQUERDA: CÂMERA E INPUT */}
-          <div className="lg:col-span-5 flex flex-col gap-4">
-            {/* Box da Câmera */}
-            <Card className="overflow-hidden border-2 border-border bg-black relative aspect-video lg:aspect-square flex items-center justify-center shadow-inner rounded-2xl">
-               {cameraAtiva ? (
-                 <>
-                   <video ref={ref} className="w-full h-full object-cover" />
-                   <div className="absolute inset-0 border-2 border-blue-500/50 m-12 rounded-lg pointer-events-none flex flex-col items-center justify-center">
-                      <div className="w-full h-0.5 bg-blue-500/80 animate-pulse mb-2 shadow-[0_0_10px_#3b82f6]"></div>
-                      <span className="text-[10px] text-blue-500 font-mono bg-black/60 px-2 rounded">MIRA ATIVA</span>
-                   </div>
-                   <Button variant="destructive" size="icon" className="absolute top-4 right-4 rounded-full" onClick={() => setCameraAtiva(false)}>
-                      <XCircle className="w-6 h-6" />
-                   </Button>
-                 </>
-               ) : (
-                 <div className="text-center p-6 space-y-4">
-                    <div className="w-24 h-24 bg-slate-900 rounded-full flex items-center justify-center mx-auto text-slate-600 border border-slate-800">
-                       <Camera className="w-10 h-10" />
-                    </div>
-                    <div>
-                      <h3 className="text-white font-bold text-lg">Câmera / Tablet</h3>
-                      <p className="text-muted-foreground text-xs uppercase tracking-wide">Para bipagem móvel</p>
-                    </div>
-                    <Button onClick={() => setCameraAtiva(true)} className="bg-primary hover:bg-primary/90 text-white px-8 h-12 rounded-full font-bold w-full">
-                      ATIVAR
-                    </Button>
-                 </div>
-               )}
-            </Card>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="flex flex-col gap-4 lg:col-span-5">
+            <Painel titulo="Leitura do chassi" codigo="E1" icone={ScanBarcode}>
+              <form onSubmit={handleManualSubmit} className="flex gap-2">
+                <Input
+                  ref={inputRef}
+                  value={codigo}
+                  onChange={(e) => setCodigo(e.target.value.toUpperCase())}
+                  placeholder="Chassi (17 caracteres)"
+                  aria-label="Chassi"
+                  className="h-14 bg-background font-mono text-lg uppercase tracking-[0.18em]"
+                  disabled={loading || cameraAtiva}
+                  maxLength={17}
+                />
+                <Button type="submit" variant="grafite" disabled={loading || codigo.length < 5} className="h-14 w-16" aria-label="Registrar entrada">
+                  {loading ? <Loader2 className="animate-spin" /> : <ArrowRight className="size-5" />}
+                </Button>
+              </form>
+              <div className="mt-2 flex items-center justify-between gap-2 text-xs text-sutil">
+                <span>Com a pistola USB é só bipar: o campo já fica selecionado.</span>
+                <span className="font-mono tabular-nums">{codigo.length}/17</span>
+              </div>
+            </Painel>
 
-            {/* Box do Input Manual */}
-            <Card className="bg-card border-border shadow-sm">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
-                      <Hash className="w-3 h-3" /> Pistola USB / Manual
-                  </p>
-                  {loading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+            <Painel
+              titulo="Câmera do tablet"
+              icone={Camera}
+              semRecuo
+              acoes={cameraAtiva ? (
+                <Button variant="outline" size="sm" onClick={() => setCameraAtiva(false)}>
+                  <XCircle /> Desligar
+                </Button>
+              ) : undefined}
+            >
+              {cameraAtiva ? (
+                <div className="relative aspect-video bg-sidebar lg:aspect-[4/3]">
+                  <video ref={ref} className="size-full object-cover" />
+                  <div className="pointer-events-none absolute inset-8 flex flex-col items-center justify-center rounded-sm border-2 border-white/60">
+                    <span className="h-0.5 w-full bg-primary/90" />
+                    <span className="mt-2 rounded-sm bg-black/60 px-2 py-0.5 font-mono text-[10px] text-white">ALINHE O CÓDIGO DE BARRAS</span>
+                  </div>
                 </div>
-                <form onSubmit={handleManualSubmit} className="flex gap-2">
-                  <Input 
-                    ref={inputRef}
-                    value={codigo}
-                    onChange={(e) => setCodigo(e.target.value.toUpperCase())}
-                    placeholder="Chassi ou SKU..."
-                    className="font-mono uppercase tracking-widest text-lg h-12 bg-muted/50 border-border focus:border-blue-500"
-                    disabled={loading || cameraAtiva}
-                    maxLength={17}
-                  />
-                  <Button type="submit" disabled={loading || codigo.length < 5} className="h-12 w-16 bg-slate-900 dark:bg-slate-800 hover:bg-slate-800">
-                    <ArrowRight />
+              ) : (
+                <div className="flex items-center justify-between gap-4 p-4">
+                  <p className="text-sm text-muted-foreground">Sem pistola? Use a câmera traseira do tablet para ler a etiqueta.</p>
+                  <Button variant="outline" onClick={() => setCameraAtiva(true)} className="shrink-0">
+                    <Camera /> Ligar câmera
                   </Button>
-                </form>
-              </CardContent>
-            </Card>
+                </div>
+              )}
+            </Painel>
 
-            {/* Leituras desta sessão */}
             {leituras.length > 0 && (
-              <Card className="bg-card border-border shadow-sm">
-                <CardContent className="p-4">
-                  <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1 mb-3">
-                    <History className="w-3 h-3" /> Últimas leituras ({leituras.filter(l => l.ok).length} registradas)
-                  </p>
-                  <ul className="space-y-1.5">
-                    {leituras.map((l, i) => (
-                      <li key={`${l.chassi}-${i}`} className="flex items-center gap-2 text-xs">
-                        {l.ok ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
-                        <span className="font-mono text-foreground/90">{l.chassi}</span>
-                        <span className="text-muted-foreground truncate flex-1">{l.modelo} · {l.mensagem}</span>
-                        <span className="text-muted-foreground font-mono shrink-0">{l.hora}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
+              <Painel titulo="Leituras desta sessão" icone={History} meta={`${registradas} registrada(s)`} semRecuo>
+                <ul className="divide-y">
+                  {leituras.map((l, i) => (
+                    <li key={`${l.chassi}-${i}`} className="flex items-center gap-2.5 px-4 py-2 text-xs">
+                      {l.ok ? <CheckCircle2 className="size-4 shrink-0 text-success" aria-label="Registrada" /> : <AlertTriangle className="size-4 shrink-0 text-destructive" aria-label="Não registrada" />}
+                      <span className="font-mono text-foreground">{l.chassi}</span>
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">{l.modelo} · {l.mensagem}</span>
+                      <span className="shrink-0 font-mono text-sutil">{l.hora}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Painel>
             )}
           </div>
 
-          {/* DIREITA: FEEDBACK DO REGISTRO */}
-          <div className="lg:col-span-7 h-full">
-             {ultimoRegistro ? (
-                <Card className="h-full border-l-8 border-l-blue-500 bg-card border-y border-r border-border shadow-xl relative overflow-hidden animate-in slide-in-from-right duration-500">
-                   <div className="absolute -right-10 -bottom-10 opacity-5 pointer-events-none">
-                      <Box className="w-80 h-80 text-blue-500" />
-                   </div>
-                   
-                   <CardContent className="p-8 flex flex-col h-full justify-center">
-                      <div className="flex items-start justify-between mb-8">
-                          <div>
-                              <p className="text-sm font-bold text-primary uppercase tracking-widest mb-1 flex items-center gap-2">
-                                  <CheckCircle2 className="w-5 h-5" /> Adicionado à Fila
-                              </p>
-                              <h2 className="text-3xl md:text-5xl font-black text-foreground leading-tight">
-                                  {ultimoRegistro.modelo}
-                              </h2>
-                          </div>
-                          <div className="text-right">
-                              <Badge className="bg-muted text-muted-foreground text-lg px-4 py-1">
-                                  {ultimoRegistro.ano}
-                              </Badge>
-                          </div>
-                      </div>
-
-                      <div className="space-y-6 relative z-10">
-                          <div className="bg-muted/50 p-4 rounded-xl border border-border">
-                              <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Chassi (VIN)</p>
-                              <p className="text-2xl font-mono tracking-widest text-foreground/90">
-                                  {ultimoRegistro.sku}
-                              </p>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                              <div className="bg-muted/50 p-4 rounded-xl border border-border">
-                                  <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Status</p>
-                                  <Badge className="bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/30">
-                                      AGUARDANDO
-                                  </Badge>
-                              </div>
-                              <div className="bg-muted/50 p-4 rounded-xl border border-border">
-                                  <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Destino Sugerido</p>
-                                  <p className="text-lg font-bold text-foreground">
-                                      {ultimoRegistro.linha_destino}
-                                  </p>
-                              </div>
-                          </div>
-                      </div>
-
-                      <div className="mt-8 flex justify-end">
-                          <Button 
-                            variant="outline" 
-                            onClick={() => setUltimoRegistro(null)}
-                            className="border-border hover:bg-accent"
-                          >
-                              Ler Próxima Caixa
-                          </Button>
-                      </div>
-                   </CardContent>
-                </Card>
-             ) : (
-                <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-muted/50 rounded-2xl border-2 border-dashed border-border">
-                   <div className="w-24 h-24 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 shadow-sm">
-                      <ScanBarcode className="w-12 h-12 text-slate-300 dark:text-slate-600" />
-                   </div>
-                   <h3 className="text-xl font-bold text-foreground/90 mb-2">Pronto para Receber</h3>
-                   <p className="text-muted-foreground max-w-xs mx-auto mb-8">
-                      Aponte para a etiqueta da caixa. O sistema registrará na fila de montagem automaticamente.
-                   </p>
+          <div className="lg:col-span-7">
+            {ultimoRegistro ? (
+              <Painel
+                titulo="Adicionada à fila"
+                icone={CheckCircle2}
+                className="h-full border-l-[3px] border-l-success"
+                acoes={
+                  <Button variant="outline" size="sm" onClick={() => setUltimoRegistro(null)}>
+                    Ler próxima caixa
+                  </Button>
+                }
+              >
+                <div className="space-y-6">
+                  <div className="space-y-1">
+                    <p className="rotulo text-sutil">Modelo reconhecido</p>
+                    <h2 className="text-3xl font-semibold leading-tight md:text-4xl">{ultimoRegistro.modelo}</h2>
+                  </div>
+                  <PlacaChassi chassi={ultimoRegistro.sku} tamanho="lg" explicar modelo={ultimoRegistro.modelo} />
+                  <dl className="grid grid-cols-2 gap-4 border-t pt-4 sm:grid-cols-3">
+                    <div>
+                      <dt className="rotulo text-sutil">Ano-modelo</dt>
+                      <dd className="mt-1.5 text-lg font-semibold">{ultimoRegistro.ano || "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="rotulo text-sutil">Etapa</dt>
+                      <dd className="mt-1.5"><StatusBadge status="aguardando_montagem" /></dd>
+                    </div>
+                    <div>
+                      <dt className="rotulo text-sutil">Próximo passo</dt>
+                      <dd className="mt-1.5 flex items-center gap-2 text-sm font-medium"><span className="codigo-estacao">E2</span> Montagem</dd>
+                    </div>
+                  </dl>
                 </div>
-             )}
+              </Painel>
+            ) : (
+              <EmptyState
+                icone={ScanBarcode}
+                titulo="Pronto para receber"
+                descricao="Cada caixa bipada vira uma moto na fila de montagem."
+                passos={[
+                  "Bipe a etiqueta do chassi na caixa (17 caracteres, só letras e números).",
+                  "O sistema confere se o chassi já foi registrado e reconhece o modelo pelo código VDS (posições 4 a 9).",
+                  "Se o modelo não for reconhecido, você escolhe na lista antes de confirmar.",
+                  "A moto entra no fim da fila da Montagem (E2).",
+                ]}
+                className="h-full"
+              />
+            )}
           </div>
         </div>
 
         {/* MODAL RESOLUÇÃO MODELO DESCONHECIDO */}
         <Dialog open={modalModeloDesconhecidoOpen} onOpenChange={setModalModeloDesconhecidoOpen}>
-            <DialogContent className="bg-card border-border">
+            <DialogContent>
                 <DialogHeader>
-                    <DialogTitle className="text-amber-600 flex items-center gap-2">
-                         <Box className="w-5 h-5"/> Chassi Não Reconhecido
+                    <DialogTitle className="flex items-center gap-2">
+                         <TriangleAlert className="size-5 text-warning"/> Chassi não reconhecido
                     </DialogTitle>
                     <DialogDescription>
                          O chassi escaneado não foi associado a nenhum modelo automaticamente. Selecione ou digite o modelo correspondente.
@@ -413,12 +386,9 @@ export default function ScannerPage() {
                 </DialogHeader>
                 
                 <div className="space-y-4 py-4">
-                    <div className="bg-muted/50 p-3 rounded-lg border border-border">
-                        <p className="text-xs text-muted-foreground uppercase font-bold">Chassi Bipado</p>
-                        <p className="font-mono text-lg font-bold tracking-widest text-foreground">{chassiPendente}</p>
-                    </div>
+                    {chassiPendente && <PlacaChassi chassi={chassiPendente} tamanho="md" explicar />}
 
-                    <div className="flex items-center gap-4 border-b border-border pb-3">
+                    <div className="flex items-center gap-4 border-b pb-3">
                          <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                               <input 
                                    type="radio" 
@@ -441,7 +411,7 @@ export default function ScannerPage() {
 
                     {!usarCustomModelo ? (
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase">Modelo do Catálogo</label>
+                            <label className="rotulo text-sutil">Modelo do catálogo</label>
                             <Select onValueChange={setModeloSelecionado} value={modeloSelecionado}>
                                 <SelectTrigger className="w-full">
                                      <SelectValue placeholder="Selecione um modelo..."/>
@@ -455,7 +425,7 @@ export default function ScannerPage() {
                         </div>
                     ) : (
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-muted-foreground uppercase">Modelo Personalizado</label>
+                            <label className="rotulo text-sutil">Modelo personalizado</label>
                             <Input 
                                  placeholder="Ex: SHI 175 EFI 2026..." 
                                  value={customModelo} 
@@ -476,7 +446,6 @@ export default function ScannerPage() {
                               setModalModeloDesconhecidoOpen(false);
                               await registrarMotoNoBanco(chassiPendente, mod, metadadosPendentes);
                          }} 
-                         className="bg-primary hover:bg-primary/90 text-white"
                     >
                          Confirmar Entrada
                     </Button>

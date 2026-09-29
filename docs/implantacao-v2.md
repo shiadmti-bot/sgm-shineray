@@ -104,7 +104,7 @@ O relatório mostra, para cada funcionário, o login e a ação (`criado`, `atua
 3. Teste com uma pessoa de cada perfil:
    - montador: aba **PIN da linha** (matrícula + PIN) → cai na *Montagem*;
    - supervisor: matrícula (ou e-mail) + senha → *Qualidade*;
-   - gestor → *Painel*; master → *Painel* com *Perfis de acesso* no menu.
+   - gestor → *Central da linha*; master → *Central da linha* com *Perfis de acesso* no menu.
 4. Recarregue os tablets (feche e abra o app instalado). A V2 descarta a sessão antiga da V1.
 
 Até a fase 4 a V1 ainda funciona: se algo der errado, basta promover a publicação anterior na Vercel.

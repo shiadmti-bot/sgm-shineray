@@ -42,6 +42,37 @@ export const ROTULO_ACAO: Record<string, string> = {
   INVENTARIO_CANCELADO: "Inventário cancelado",
 };
 
+/** Estação onde cada tipo de evento acontece (liga o registro ao mapa do fluxo). */
+export const ESTACAO_DA_ACAO: Record<string, string> = {
+  ENTRADA_ESTOQUE: "E1",
+  INICIO_MONTAGEM: "E2",
+  PAUSA_MONTAGEM: "E2",
+  PAUSA_SOLICITADA: "E2",
+  PAUSA_APROVADA: "E2",
+  PAUSA_REJEITADA: "E2",
+  PAUSA_CANCELADA: "E2",
+  PAUSA_RETOMADA: "E2",
+  FIM_MONTAGEM: "E2",
+  PRODUCAO_FIM: "E2",
+  APROVACAO_QA: "E3",
+  REPROVACAO_QA: "E3",
+  RETRABALHO_QA: "E3",
+  REPARO_OFICINA: "AV",
+  RETORNO_REPARO: "AV",
+  IMPRESSAO_ETIQUETA: "E4",
+  REIMPRESSAO_ETIQUETA: "E4",
+  REVERSAO_ESTOQUE: "E5",
+  SAIDA_ESTOQUE: "E5",
+  INVENTARIO_INICIADO: "IN",
+  INVENTARIO_FINALIZADO: "IN",
+  INVENTARIO_CANCELADO: "IN",
+};
+
+/** Código da estação (E1…E5, AV, IN) de um evento; `undefined` para eventos administrativos. */
+export function estacaoDaAcao(acao: string): string | undefined {
+  return ESTACAO_DA_ACAO[acao];
+}
+
 export function rotuloAcao(acao: string): string {
   return ROTULO_ACAO[acao] ?? acao.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase());
 }

@@ -12,7 +12,7 @@ As mesmas regras valem em dois lugares:
 
 | Chave | Nome na tela | Libera |
 |-------|--------------|--------|
-| `painel.ver` | Ver o painel | Tela Painel |
+| `painel.ver` | Ver a Central da linha | Tela Central da linha (antigo Painel; a chave continua `painel.ver`) |
 | `prontuario.ver` | Consultar prontuário | Prontuário e busca de chassi (Ctrl+K) |
 | `scanner.registrar` | Registrar entrada | Tela Entrada (scanner); cadastrar moto como "aguardando montagem" |
 | `montagem.executar` | Montar motos | Tela Montagem: assumir, pedir pausa, retomar e finalizar a própria montagem |
@@ -38,9 +38,9 @@ As mesmas regras valem em dois lugares:
 
 | Perfil | Acesso | Tela inicial | Permissões |
 |--------|--------|--------------|------------|
-| Master | Senha | Painel | Todas |
-| Gestor | Senha | Painel | Todas, exceto `montagem.executar`, `montagem.remover` e `perfis.gerenciar` |
-| Supervisor | Senha | Qualidade | Painel, prontuário, entrada, montagem, remover da fila, pausas, qualidade, avarias (ver/reparar), imprimir etiquetas, estoque (ver/editar/expedir), inventário |
+| Master | Senha | Central da linha | Todas |
+| Gestor | Senha | Central da linha | Todas, exceto `montagem.executar`, `montagem.remover` e `perfis.gerenciar` |
+| Supervisor | Senha | Qualidade | Central da linha, prontuário, entrada, montagem, remover da fila, pausas, qualidade, avarias (ver/reparar), imprimir etiquetas, estoque (ver/editar/expedir), inventário |
 | Montador | Matrícula + PIN | Montagem | Entrada, montagem, remover da fila, imprimir etiquetas |
 
 Os perfis padrão não podem ser excluídos nem ter o identificador alterado; o Master só pode ser alterado por um Master.

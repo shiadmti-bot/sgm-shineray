@@ -48,7 +48,7 @@ export default function TrocarSenhaPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <form onSubmit={salvar} className="w-full max-w-sm space-y-6 rounded-2xl border bg-card p-8 shadow-sm">
+      <form onSubmit={salvar} className="w-full max-w-sm space-y-6 rounded-lg border bg-card p-8">
         <div className="space-y-2">
           <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <KeyRound className="size-6" />
