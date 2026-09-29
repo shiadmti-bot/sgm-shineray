@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { RoleGuard } from "@/components/RoleGuard";
+import { PageHeader } from "@/components/sgm/PageHeader";
+import { buscarTodas } from "@/lib/consultas";
+import { formatarDuracaoMin } from "@/lib/datas";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LabelList, ComposedChart, Line
@@ -18,7 +20,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import ExcelJS from 'exceljs';
 import { format, subDays, differenceInMinutes, differenceInHours, startOfMonth } from "date-fns";
 import { STATUS_APROVADOS } from "@/lib/constantes";
 
@@ -86,8 +87,10 @@ export default function RelatoriosPage() {
     try {
       // Use allSettled so a failing table (e.g. historico_avarias) doesn't block the page
       const results = await Promise.allSettled([
-        supabase.from('motos').select(`*, montador:funcionarios!motos_montador_id_fkey(nome), supervisor:funcionarios!motos_supervisor_id_fkey(nome)`)
-          .gte('created_at', dataInicio.toISOString()).lte('created_at', dataFim.toISOString()).order('created_at', { ascending: true }),
+        // Em páginas: a API devolve no máximo 1.000 linhas por consulta
+        buscarTodas<any>((de, ate) => supabase.from('motos').select(`*, montador:funcionarios!motos_montador_id_fkey(nome), supervisor:funcionarios!motos_supervisor_id_fkey(nome)`)
+          .gte('created_at', dataInicio.toISOString()).lte('created_at', dataFim.toISOString())
+          .order('created_at', { ascending: true }).order('id', { ascending: true }).range(de, ate)).then((data) => ({ data })),
         supabase.from('pausas_producao').select('*').gte('inicio', dataInicio.toISOString()),
         supabase.from('historico_avarias').select('*').gte('created_at', dataInicio.toISOString()),
         supabase.from('solicitacoes_pausa').select('*').gte('created_at', dataInicio.toISOString()),
@@ -354,12 +357,17 @@ export default function RelatoriosPage() {
   }
 
   function processarPausas(pausas: any[], solPausa: any[], motos: any[]) {
-    const motivos: Record<string, number> = {};
+    // Duração real: a V2 registra o fim de cada pausa (pausas em andamento contam até agora)
+    const motivos: Record<string, { value: number; minutos: number }> = {};
     pausas.forEach(p => {
       const mot = p.motivo || 'Não informado';
-      motivos[mot] = (motivos[mot] || 0) + 1;
+      const fim = p.fim ? new Date(p.fim).getTime() : Date.now();
+      const minutos = p.inicio ? Math.max(0, Math.round((fim - new Date(p.inicio).getTime()) / 60000)) : 0;
+      motivos[mot] = motivos[mot] || { value: 0, minutos: 0 };
+      motivos[mot].value += 1;
+      motivos[mot].minutos += minutos;
     });
-    const resumo = Object.entries(motivos).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    const resumo = Object.entries(motivos).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.minutos - a.minutos || b.value - a.value);
     setPausasResumo(resumo);
   }
 
@@ -383,6 +391,7 @@ export default function RelatoriosPage() {
 
   const handleExportExcel = async () => {
     if (rawData.length === 0) return toast.warning("Sem dados.");
+    const { default: ExcelJS } = await import('exceljs');
     const workbook = new ExcelJS.Workbook();
 
     // Aba 1: Dados Brutos
@@ -431,22 +440,18 @@ export default function RelatoriosPage() {
   const gargaloBorda = kpis.gargaloNivel === 'ok' ? 'border-l-green-500' : kpis.gargaloNivel === 'warn' ? 'border-l-amber-500' : 'border-l-red-500';
 
   return (
-    <RoleGuard allowedRoles={['master', 'gestor']}>
       <div className="space-y-6 animate-in fade-in duration-500 pb-20 print:p-0 print:bg-white">
 
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 print:hidden">
-          <div>
-            <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
-               <TrendingUp className="w-8 h-8 text-blue-600" /> Relatórios de Produção
-               {loading && <Loader2 className="w-5 h-5 text-slate-400 animate-spin" aria-label="Carregando" />}
-            </h1>
-            <p className="text-slate-500">Análise detalhada de volume, qualidade e eficiência. Aprovadas incluem as motos aguardando etiqueta.</p>
-          </div>
+        <PageHeader
+          icone={TrendingUp}
+          titulo="Relatórios de produção"
+          descricao={<>Volume, qualidade e eficiência. Aprovadas incluem as motos aguardando etiqueta.{loading && <Loader2 className="ml-2 inline size-4 animate-spin" aria-label="Carregando" />}</>}
+          acoes={
           <div className="flex flex-wrap gap-2 items-end">
             <Select value={periodo} onValueChange={setPeriodo}>
-              <SelectTrigger className="w-[160px] bg-white dark:bg-slate-900">
-                <Calendar className="w-4 h-4 mr-2 text-slate-500" /><SelectValue />
+              <SelectTrigger className="w-[160px] bg-card">
+                <Calendar className="w-4 h-4 mr-2 text-muted-foreground" /><SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="hoje">Hoje</SelectItem>
@@ -457,8 +462,8 @@ export default function RelatoriosPage() {
             </Select>
             {periodo === 'custom' && (
               <div className="flex gap-2">
-                <Input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-[150px] bg-white dark:bg-slate-900" />
-                <Input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-[150px] bg-white dark:bg-slate-900" />
+                <Input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-[150px] bg-card" />
+                <Input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-[150px] bg-card" />
               </div>
             )}
             <Button onClick={handleExportExcel} className="bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-600/20">
@@ -466,7 +471,8 @@ export default function RelatoriosPage() {
             </Button>
             <Button onClick={handlePrint} variant="outline"><Printer className="w-4 h-4 mr-2" /> Imprimir</Button>
           </div>
-        </div>
+          }
+        />
 
         {/* Alertas Inteligentes */}
         {alertas.length > 0 && (
@@ -486,12 +492,12 @@ export default function RelatoriosPage() {
 
         {/* KPIs - Linha 1 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="border-l-4 border-l-blue-500 bg-white dark:bg-slate-950 shadow-sm">
+          <Card className="border-l-4 border-l-blue-500 bg-card shadow-sm">
             <CardContent className="p-5">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Entrada (CD)</p>
-                  <p className="text-3xl font-black text-slate-900 dark:text-white mt-1">{kpis.totalEntrada}</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Entrada (CD)</p>
+                  <p className="text-3xl font-black text-foreground mt-1">{kpis.totalEntrada}</p>
                   {kpis.deltaProdSinal !== 'same' && (
                     <p className={`text-xs mt-1 flex items-center gap-1 font-bold ${kpis.deltaProdSinal === 'up' ? 'text-green-600' : 'text-red-500'}`}>
                       {kpis.deltaProdSinal === 'up' ? <ArrowUpRight className="w-3 h-3"/> : <ArrowDownRight className="w-3 h-3"/>}
@@ -499,29 +505,29 @@ export default function RelatoriosPage() {
                     </p>
                   )}
                 </div>
-                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600"><Activity className="w-5 h-5"/></div>
+                <div className="p-2 bg-info/10 rounded-lg text-primary"><Activity className="w-5 h-5"/></div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-green-500 bg-white dark:bg-slate-950 shadow-sm">
+          <Card className="border-l-4 border-l-green-500 bg-card shadow-sm">
             <CardContent className="p-5">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">FPY (1ª Tentativa)</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider">FPY (1ª Tentativa)</p>
                   <p className="text-3xl font-black text-green-600 mt-1">{kpis.fpy}%</p>
-                  <p className="text-xs text-slate-400 mt-1">{kpis.aprovadasDireto} de {kpis.totalEntrada} perfeitas</p>
+                  <p className="text-xs text-muted-foreground mt-1">{kpis.aprovadasDireto} de {kpis.totalEntrada} perfeitas</p>
                 </div>
                 <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-600"><Target className="w-5 h-5"/></div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-amber-500 bg-white dark:bg-slate-950 shadow-sm">
+          <Card className="border-l-4 border-l-amber-500 bg-card shadow-sm">
             <CardContent className="p-5">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Taxa de Retrabalho</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Taxa de Retrabalho</p>
                   <p className="text-3xl font-black text-amber-600 mt-1">{kpis.taxaRetrabalho}%</p>
                 </div>
                 <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-amber-600"><AlertTriangle className="w-5 h-5"/></div>
@@ -529,11 +535,11 @@ export default function RelatoriosPage() {
             </CardContent>
           </Card>
 
-          <Card className={`border-l-4 ${gargaloBorda} bg-white dark:bg-slate-950 shadow-sm`}>
+          <Card className={`border-l-4 ${gargaloBorda} bg-card shadow-sm`}>
             <CardContent className="p-5">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Status do Fluxo</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Status do Fluxo</p>
                   <p className={`text-lg font-black mt-2 leading-none ${kpis.gargaloNivel === 'ok' ? 'text-green-600' : kpis.gargaloNivel === 'warn' ? 'text-amber-600' : 'text-red-600'}`}>{kpis.gargalo}</p>
                 </div>
                 <div className={`p-2 rounded-lg ${kpis.gargaloNivel === 'ok' ? 'bg-green-50 dark:bg-green-900/20 text-green-600' : kpis.gargaloNivel === 'warn' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600' : 'bg-red-50 dark:bg-red-900/20 text-red-600'}`}>
@@ -546,11 +552,11 @@ export default function RelatoriosPage() {
 
         {/* KPIs - Linha 2 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="border-l-4 border-l-cyan-500 bg-white dark:bg-slate-950 shadow-sm">
+          <Card className="border-l-4 border-l-cyan-500 bg-card shadow-sm">
             <CardContent className="p-5">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Tempo Médio Montagem</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Tempo Médio Montagem</p>
                   <p className="text-3xl font-black text-cyan-600 mt-1">{kpis.tempoMedioMontagem}<span className="text-lg">min</span></p>
                 </div>
                 <div className="p-2 bg-cyan-50 dark:bg-cyan-900/20 rounded-lg text-cyan-600"><Timer className="w-5 h-5"/></div>
@@ -558,11 +564,11 @@ export default function RelatoriosPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-violet-500 bg-white dark:bg-slate-950 shadow-sm">
+          <Card className="border-l-4 border-l-violet-500 bg-card shadow-sm">
             <CardContent className="p-5">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Resolução Avaria</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Resolução Avaria</p>
                   <p className="text-3xl font-black text-violet-600 mt-1">{kpis.tempoMedioAvaria}<span className="text-lg">h</span></p>
                 </div>
                 <div className="p-2 bg-violet-50 dark:bg-violet-900/20 rounded-lg text-violet-600"><Wrench className="w-5 h-5"/></div>
@@ -570,11 +576,11 @@ export default function RelatoriosPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-emerald-500 bg-white dark:bg-slate-950 shadow-sm">
+          <Card className="border-l-4 border-l-emerald-500 bg-card shadow-sm">
             <CardContent className="p-5">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total Aprovadas</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Total Aprovadas</p>
                   <p className="text-3xl font-black text-emerald-600 mt-1">{kpis.aprovadasTotal}</p>
                 </div>
                 <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg text-emerald-600"><CheckCircle2 className="w-5 h-5"/></div>
@@ -582,13 +588,13 @@ export default function RelatoriosPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-l-4 border-l-indigo-500 bg-white dark:bg-slate-950 shadow-sm">
+          <Card className="border-l-4 border-l-indigo-500 bg-card shadow-sm">
             <CardContent className="p-5">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Tempo de Pátio</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase tracking-wider">Tempo de Pátio</p>
                   <p className="text-3xl font-black text-indigo-600 mt-1">{kpis.tempoMedioPatio}<span className="text-lg">h</span></p>
-                  <p className="text-xs text-slate-400 mt-1">{kpis.expedidas} expedida(s) no período</p>
+                  <p className="text-xs text-muted-foreground mt-1">{kpis.expedidas} expedida(s) no período</p>
                 </div>
                 <div className="p-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg text-indigo-600"><Warehouse className="w-5 h-5"/></div>
               </div>
@@ -598,7 +604,7 @@ export default function RelatoriosPage() {
 
         {/* Tabs de Análise */}
         <Tabs defaultValue="evolucao" className="w-full">
-          <TabsList className="bg-slate-100 dark:bg-slate-900 w-full justify-start flex-wrap h-auto gap-1 p-1">
+          <TabsList className="bg-muted w-full justify-start flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="evolucao">Evolução</TabsTrigger>
             <TabsTrigger value="equipe">Equipe</TabsTrigger>
             <TabsTrigger value="modelos">Modelos</TabsTrigger>
@@ -609,7 +615,7 @@ export default function RelatoriosPage() {
 
           {/* Tab Evolução */}
           <TabsContent value="evolucao" className="mt-6 space-y-6">
-            <Card className="bg-white dark:bg-slate-950 shadow-md">
+            <Card className="bg-card shadow-md">
               <CardHeader>
                 <CardTitle>Evolução da Qualidade de Produção</CardTitle>
                 <CardDescription>Comparativo diário: verde (perfeitas), amarelo (retrabalhos), vermelho (avarias), azul claro (em andamento).</CardDescription>
@@ -634,7 +640,7 @@ export default function RelatoriosPage() {
 
             {/* FPY Trend + Horas Pico */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="bg-white dark:bg-slate-950 shadow-md">
+              <Card className="bg-card shadow-md">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2"><Target className="w-5 h-5 text-green-600"/> Tendência FPY</CardTitle>
                   <CardDescription>First Pass Yield diário vs meta de 90%</CardDescription>
@@ -653,9 +659,9 @@ export default function RelatoriosPage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-white dark:bg-slate-950 shadow-md">
+              <Card className="bg-card shadow-md">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Clock className="w-5 h-5 text-blue-600"/> Horários de Pico</CardTitle>
+                  <CardTitle className="flex items-center gap-2"><Clock className="w-5 h-5 text-primary"/> Horários de Pico</CardTitle>
                   <CardDescription>Volume de montagens iniciadas por hora do dia</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[280px]">
@@ -678,7 +684,7 @@ export default function RelatoriosPage() {
           {/* Tab Equipe */}
           {/* Tab Equipe (com Ranking QA) */}
           <TabsContent value="equipe" className="mt-6 space-y-6">
-            <Card className="bg-white dark:bg-slate-950">
+            <Card className="bg-card">
               <CardHeader><CardTitle>Produtividade de Montagem</CardTitle><CardDescription>Ranking com volume, retrabalhos e tempo médio por montador</CardDescription></CardHeader>
               <CardContent className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -708,17 +714,17 @@ export default function RelatoriosPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-white dark:bg-slate-950">
+            <Card className="bg-card">
               <CardHeader><CardTitle className="flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-green-600"/> Avaliação de Qualidade (QA)</CardTitle><CardDescription>Desempenho dos supervisores na inspeção final</CardDescription></CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead><tr className="border-b text-left text-slate-500 text-xs uppercase">
+                    <thead><tr className="border-b text-left text-muted-foreground text-xs uppercase">
                       <th className="pb-3 font-bold">Inspetor QA</th><th className="pb-3 font-bold text-center">Inspecionadas</th><th className="pb-3 font-bold text-center">Aprovadas</th><th className="pb-3 font-bold text-center">Reprovadas</th><th className="pb-3 font-bold text-center">Tempo Médio</th><th className="pb-3 font-bold text-center">Taxa Reprovação</th>
                     </tr></thead>
                     <tbody>{qaData.map((q: any) => (
-                      <tr key={q.nome} className="border-b border-slate-100 dark:border-slate-800">
-                        <td className="py-3 font-bold text-slate-900 dark:text-white">{q.nome}</td>
+                      <tr key={q.nome} className="border-b border-border">
+                        <td className="py-3 font-bold text-foreground">{q.nome}</td>
                         <td className="py-3 text-center">{q.totalInspecionado}</td>
                         <td className="py-3 text-center text-green-600 font-bold">{q.aprovadas}</td>
                         <td className="py-3 text-center text-red-600 font-bold">{q.reprovadas}</td>
@@ -738,8 +744,8 @@ export default function RelatoriosPage() {
 
           {/* Tab Modelos */}
           <TabsContent value="modelos" className="mt-6 space-y-6">
-            <Card className="bg-white dark:bg-slate-950">
-              <CardHeader><CardTitle className="flex items-center gap-2"><Package className="w-5 h-5 text-blue-600"/> Produção por Modelo</CardTitle></CardHeader>
+            <Card className="bg-card">
+              <CardHeader><CardTitle className="flex items-center gap-2"><Package className="w-5 h-5 text-primary"/> Produção por Modelo</CardTitle></CardHeader>
               <CardContent className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={modelosData} margin={{ top: 20, right: 30, bottom: 60, left: 0 }}>
@@ -756,18 +762,18 @@ export default function RelatoriosPage() {
               </CardContent>
             </Card>
             {/* Tabela resumo modelos */}
-            <Card className="bg-white dark:bg-slate-950">
+            <Card className="bg-card">
               <CardHeader><CardTitle>Resumo por Modelo</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead><tr className="border-b text-left text-slate-500 text-xs uppercase">
+                      <thead><tr className="border-b text-left text-muted-foreground text-xs uppercase">
                         <th className="pb-3 font-bold">Modelo</th><th className="pb-3 font-bold text-center">Total</th><th className="pb-3 font-bold text-center">Aprovadas</th><th className="pb-3 font-bold text-center">Avarias</th><th className="pb-3 font-bold text-center">Taxa Avaria</th>
                       </tr></thead>
                       <tbody>{modelosData.map((m: any) => (
-                        <tr key={m.name} className="border-b border-slate-100 dark:border-slate-800">
-                          <td className="py-3 font-bold text-slate-900 dark:text-white">{m.name}</td>
+                        <tr key={m.name} className="border-b border-border">
+                          <td className="py-3 font-bold text-foreground">{m.name}</td>
                           <td className="py-3 text-center">{m.total}</td>
                           <td className="py-3 text-center text-green-600 font-bold">{m.aprovadas}</td>
                           <td className="py-3 text-center text-red-600 font-bold">{m.avarias}</td>
@@ -781,8 +787,8 @@ export default function RelatoriosPage() {
                     </table>
                   </div>
 
-                  <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-100 dark:border-slate-800">
-                     <h3 className="font-bold text-sm text-slate-700 dark:text-slate-300 mb-4 text-center">Top 5 Combinações (Cor / Banco)</h3>
+                  <div className="bg-muted/50 rounded-xl p-4 border border-border">
+                     <h3 className="font-bold text-sm text-foreground/90 mb-4 text-center">Top 5 Combinações (Cor / Banco)</h3>
                      <div className="h-[250px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
@@ -803,7 +809,7 @@ export default function RelatoriosPage() {
           {/* Tab Avarias */}
           <TabsContent value="avarias" className="mt-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="bg-white dark:bg-slate-950">
+              <Card className="bg-card">
                 <CardHeader><CardTitle>Distribuição de Problemas</CardTitle></CardHeader>
                 <CardContent className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -816,18 +822,18 @@ export default function RelatoriosPage() {
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
-              <Card className="bg-white dark:bg-slate-950">
+              <Card className="bg-card">
                 <CardHeader><CardTitle>Ranking de Defeitos por Tipo</CardTitle></CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {avariasData.length === 0 && <p className="text-center text-slate-400 py-10">Nenhuma avaria no período.</p>}
+                    {avariasData.length === 0 && <p className="text-center text-muted-foreground py-10">Nenhuma avaria no período.</p>}
                     {avariasData.map((a, i) => (
                       <div key={a.name} className="flex justify-between items-center p-3 border rounded-lg bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30">
                         <div className="flex items-center gap-3">
                           <span className="text-lg font-black text-red-600 w-8">{i+1}º</span>
                           <div>
                             <p className="font-bold text-red-700 dark:text-red-400 uppercase">{a.name}</p>
-                            <p className="text-xs text-slate-500">{rawData.length > 0 ? `${((a.value/rawData.length)*100).toFixed(1)}% do total` : ''}</p>
+                            <p className="text-xs text-muted-foreground">{rawData.length > 0 ? `${((a.value/rawData.length)*100).toFixed(1)}% do total` : ''}</p>
                           </div>
                         </div>
                         <Badge variant="destructive" className="text-lg px-3">{a.value}</Badge>
@@ -842,27 +848,28 @@ export default function RelatoriosPage() {
           {/* Tab Pausas */}
           <TabsContent value="pausas" className="mt-6 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="border-l-4 border-l-purple-500 bg-white dark:bg-slate-950">
+              <Card className="border-l-4 border-l-purple-500 bg-card">
                 <CardContent className="p-5">
-                  <p className="text-slate-500 text-xs font-bold uppercase">Total de Pausas</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase">Total de Pausas</p>
                   <p className="text-3xl font-black text-purple-600 mt-1">{pausasResumo.reduce((a, b) => a + b.value, 0)}</p>
                 </CardContent>
               </Card>
-              <Card className="border-l-4 border-l-orange-500 bg-white dark:bg-slate-950">
+              <Card className="border-l-4 border-l-orange-500 bg-card">
                 <CardContent className="p-5">
-                  <p className="text-slate-500 text-xs font-bold uppercase">Solicitações Rejeitadas</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase">Solicitações Rejeitadas</p>
                   <p className="text-3xl font-black text-orange-600 mt-1">{solicitacoesPausa.filter((s: any) => s.status === 'rejeitado' || s.status === 'rejeitada').length}</p>
-                  <p className="text-xs text-slate-400 mt-1">de {solicitacoesPausa.length} solicitações</p>
+                  <p className="text-xs text-muted-foreground mt-1">de {solicitacoesPausa.length} solicitações</p>
                 </CardContent>
               </Card>
-              <Card className="border-l-4 border-l-indigo-500 bg-white dark:bg-slate-950">
+              <Card className="border-l-4 border-l-indigo-500 bg-card">
                 <CardContent className="p-5">
-                  <p className="text-slate-500 text-xs font-bold uppercase">Motivos Diferentes</p>
-                  <p className="text-3xl font-black text-indigo-600 mt-1">{pausasResumo.length}</p>
+                  <p className="text-muted-foreground text-xs font-bold uppercase">Tempo total parado</p>
+                  <p className="text-3xl font-black text-indigo-600 mt-1">{formatarDuracaoMin(pausasResumo.reduce((a, b) => a + (b.minutos || 0), 0))}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{pausasResumo.length} motivo(s) diferente(s)</p>
                 </CardContent>
               </Card>
             </div>
-            <Card className="bg-white dark:bg-slate-950">
+            <Card className="bg-card">
               <CardHeader><CardTitle className="flex items-center gap-2"><PauseCircle className="w-5 h-5 text-purple-600"/> Pausas por Motivo</CardTitle></CardHeader>
               <CardContent className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -871,9 +878,13 @@ export default function RelatoriosPage() {
                     <XAxis type="number" hide />
                     <YAxis dataKey="name" type="category" width={150} tick={{fontSize: 11}} />
                     <Tooltip contentStyle={{ backgroundColor: '#0f172a', color: '#fff', border: 'none', borderRadius: '8px' }} />
-                    <Bar dataKey="value" name="Ocorrências" fill={COLORS.pause} radius={[0, 4, 4, 0]} barSize={20}>
+                    <Bar dataKey="value" name="Ocorrências" fill={COLORS.pause} radius={[0, 4, 4, 0]} barSize={14}>
                       <LabelList dataKey="value" position="right" fontSize={12} />
                     </Bar>
+                    <Bar dataKey="minutos" name="Minutos parados" fill={COLORS.warning} radius={[0, 4, 4, 0]} barSize={14}>
+                      <LabelList dataKey="minutos" position="right" fontSize={12} />
+                    </Bar>
+                    <Legend />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -882,7 +893,7 @@ export default function RelatoriosPage() {
 
           {/* Tab Funil */}
           <TabsContent value="funil" className="mt-6">
-            <Card className="bg-white dark:bg-slate-950">
+            <Card className="bg-card">
               <CardHeader><CardTitle>Conversão de Processo</CardTitle><CardDescription>Funil com taxas de conversão entre etapas</CardDescription></CardHeader>
               <CardContent>
                 <div className="flex flex-col md:flex-row gap-8 items-center justify-center py-6">
@@ -891,7 +902,7 @@ export default function RelatoriosPage() {
                       <div className="text-center relative z-10">
                         <div className="rounded-xl p-6 min-w-[140px]" style={{ backgroundColor: item.fill + '20', borderLeft: `4px solid ${item.fill}` }}>
                           <p className="text-3xl font-black" style={{ color: item.fill }}>{item.value}</p>
-                          <p className="text-sm font-bold text-slate-600 dark:text-slate-300 mt-1">{item.name}</p>
+                          <p className="text-sm font-bold text-muted-foreground mt-1">{item.name}</p>
                           <Badge variant="secondary" className="mt-2">{item.pct}</Badge>
                         </div>
                       </div>
@@ -916,6 +927,5 @@ export default function RelatoriosPage() {
         </Tabs>
 
       </div>
-    </RoleGuard>
   );
 }

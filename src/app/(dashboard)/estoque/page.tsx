@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { RoleGuard } from "@/components/RoleGuard";
+import { usePode } from "@/lib/auth";
+import { PageHeader } from "@/components/sgm/PageHeader";
 import { 
   Warehouse, Search, Truck, CheckCircle2, FileJson, Calendar, User, PaintBucket, Tag, AlertCircle, Wrench, RotateCcw, Pencil, Printer, Download, Loader2, RefreshCw
 } from "lucide-react";
@@ -24,6 +25,9 @@ import { renderizarEtiquetas } from "@/lib/etiquetas/render";
 import { imprimirHTML } from "@/lib/etiquetas/imprimir";
 
 export default function EstoquePage() {
+  const podeEditar = usePode("estoque.editar");
+  const podeExpedir = usePode("estoque.expedir");
+  const podeReimprimir = usePode("etiquetas.imprimir");
   const { config: configGeral } = useConfigGeral();
   const MODELOS_CADASTRADOS = listarModelos(configGeral.modelosExtras);
   const getHexColor = (nome: string) => corHex(nome, [configGeral.coresCarenagem, configGeral.coresBanco]);
@@ -270,22 +274,17 @@ export default function EstoquePage() {
   };
 
   return (
-    <RoleGuard allowedRoles={['gestor', 'master', 'supervisor']}>
       <div className="space-y-6 animate-in fade-in pb-20">
-        
-        {/* Header com Stats Rápidos */}
-        <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-emerald-600 flex items-center gap-3">
-               <Warehouse className="w-8 h-8" /> Estoque Disponível
-            </h1>
-            <p className="text-slate-500">Gestão centralizada de inventário pronto.</p>
-          </div>
+        <PageHeader
+          icone={Warehouse}
+          titulo="Estoque"
+          descricao="Motos etiquetadas e prontas para expedição."
+          acoes={
           <div className="flex flex-wrap gap-2 items-center">
              <Badge variant="outline" className="text-emerald-700 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900 px-3 py-1">
                 {motos.length} Unidades Totais
              </Badge>
-             <Badge variant="outline" className="text-slate-700 border-slate-200 bg-slate-50 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-800 px-3 py-1">
+             <Badge variant="outline" className="text-slate-700 border-slate-200 bg-muted/50 dark:text-slate-300 dark:border-slate-800 px-3 py-1">
                 {modelosUnicos.length} Modelos
              </Badge>
              <Button variant="outline" size="sm" onClick={handleExportarCSV} className="h-8">
@@ -295,15 +294,16 @@ export default function EstoquePage() {
                 <RefreshCw className="w-4 h-4" />
              </Button>
           </div>
-        </div>
+          }
+        />
 
         {/* Barra de Filtros Harmonizada */}
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col xl:flex-row gap-4 shadow-sm">
+        <div className="bg-card p-4 rounded-xl border border-border flex flex-col xl:flex-row gap-4 shadow-sm">
             <div className="relative flex-1">
-               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                <Input 
                    placeholder="Buscar chassi, modelo ou cor..." 
-                   className="pl-10 h-10 border-slate-200 dark:border-slate-700" 
+                   className="pl-10 h-10 border-border" 
                    value={busca}
                    onChange={e => setBusca(e.target.value)}
                />
@@ -311,8 +311,8 @@ export default function EstoquePage() {
             
             <div className="flex gap-2 w-full xl:w-auto">
                 <Select value={filtroModelo} onValueChange={setFiltroModelo}>
-                    <SelectTrigger className="w-full md:w-[240px] h-10 border-slate-200 dark:border-slate-700">
-                        <Tag className="w-4 h-4 mr-2 text-slate-500"/>
+                    <SelectTrigger className="w-full md:w-[240px] h-10 border-border">
+                        <Tag className="w-4 h-4 mr-2 text-muted-foreground"/>
                         <SelectValue placeholder="Filtrar Modelo" />
                     </SelectTrigger>
                     <SelectContent>
@@ -322,8 +322,8 @@ export default function EstoquePage() {
                 </Select>
 
                 <Select value={filtroCor} onValueChange={setFiltroCor}>
-                    <SelectTrigger className="w-full md:w-[180px] h-10 border-slate-200 dark:border-slate-700">
-                        <PaintBucket className="w-4 h-4 mr-2 text-slate-500"/>
+                    <SelectTrigger className="w-full md:w-[180px] h-10 border-border">
+                        <PaintBucket className="w-4 h-4 mr-2 text-muted-foreground"/>
                         <SelectValue placeholder="Filtrar Cor" />
                     </SelectTrigger>
                     <SelectContent>
@@ -350,9 +350,9 @@ export default function EstoquePage() {
         {/* Tabela Detalhada */}
         <Card className="border-0 shadow-md">
             <CardContent className="p-0">
-                <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                <div className="rounded-xl border border-border overflow-hidden">
                     <Table>
-                        <TableHeader className="bg-slate-50 dark:bg-slate-950/50">
+                        <TableHeader className="bg-muted/50">
                             <TableRow>
                                 <TableHead>Identificação</TableHead>
                                 <TableHead>Detalhes Visuais</TableHead>
@@ -364,46 +364,46 @@ export default function EstoquePage() {
                         <TableBody>
                             {carregando ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-12 text-slate-400">
+                                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                                         <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin opacity-40"/>
                                         Carregando estoque...
                                     </TableCell>
                                 </TableRow>
                             ) : motosFiltradas.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="text-center py-12 text-slate-400">
+                                    <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                                         <Warehouse className="w-12 h-12 mx-auto mb-3 opacity-20"/>
                                         Nenhuma moto encontrada com os filtros atuais.
                                     </TableCell>
                                 </TableRow>
                             ) : (
                                 motosFiltradas.map((moto) => (
-                                    <TableRow key={moto.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 group transition-colors">
+                                    <TableRow key={moto.id} className="hover:bg-accent group transition-colors">
                                         <TableCell>
                                             <div className="flex flex-col">
-                                                <span className="font-bold text-slate-900 dark:text-white">{moto.modelo}</span>
-                                                <Badge variant="outline" className="w-fit mt-1 font-mono text-[10px] text-slate-500 border-slate-300">
+                                                <span className="font-bold text-foreground">{moto.modelo}</span>
+                                                <Badge variant="outline" className="w-fit mt-1 font-mono text-[10px] text-muted-foreground border-slate-300">
                                                     {moto.sku}
                                                 </Badge>
                                             </div>
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full border-2 border-white shadow-sm flex items-center justify-center bg-slate-100 dark:bg-slate-800 relative z-0 before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-tr before:from-black/10 before:to-transparent" style={{backgroundColor: getHexColor(moto.cor)}}>
+                                                <div className="w-8 h-8 rounded-full border-2 border-white shadow-sm flex items-center justify-center bg-muted relative z-0 before:absolute before:inset-0 before:rounded-full before:bg-gradient-to-tr before:from-black/10 before:to-transparent" style={{backgroundColor: getHexColor(moto.cor)}}>
                                                     {/* Dot Visual */}
                                                 </div>
                                                 <div className="flex flex-col text-xs">
-                                                    <span className="font-bold text-slate-700 dark:text-slate-300">{moto.cor}</span>
-                                                    <span className="text-slate-400">Banco: {moto.cor_banco}</span>
+                                                    <span className="font-bold text-foreground/90">{moto.cor}</span>
+                                                    <span className="text-muted-foreground">Banco: {moto.cor_banco}</span>
                                                 </div>
                                             </div>
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-col gap-1">
-                                                <div className="flex items-center text-xs text-slate-500" title="Entrada no estoque">
+                                                <div className="flex items-center text-xs text-muted-foreground" title="Entrada no estoque">
                                                     <Calendar className="w-3 h-3 mr-1"/>
                                                     {new Date(moto.updated_at).toLocaleDateString()}
-                                                    <span className="ml-1 text-slate-400">({Math.floor(minutosDesde(moto.updated_at) / 1440)}d)</span>
+                                                    <span className="ml-1 text-muted-foreground">({Math.floor(minutosDesde(moto.updated_at) / 1440)}d)</span>
                                                 </div>
                                                 <div className="flex gap-1">
                                                     {moto.rework_count > 0 && <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">Rework</Badge>}
@@ -414,19 +414,19 @@ export default function EstoquePage() {
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-col text-xs">
-                                                <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400"><User className="w-3 h-3"/> Mont: {moto.montador?.nome?.split(' ')[0] || '—'}</span>
-                                                <span className="flex items-center gap-1 text-slate-600 dark:text-slate-400"><CheckCircle2 className="w-3 h-3 text-green-500"/> QA: {moto.supervisor?.nome?.split(' ')[0] || '—'}</span>
+                                                <span className="flex items-center gap-1 text-muted-foreground"><User className="w-3 h-3"/> Mont: {moto.montador?.nome?.split(' ')[0] || '—'}</span>
+                                                <span className="flex items-center gap-1 text-muted-foreground"><CheckCircle2 className="w-3 h-3 text-green-500"/> QA: {moto.supervisor?.nome?.split(' ')[0] || '—'}</span>
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-2">
                                                 <Dialog open={!!motoDetalhes && motoDetalhes.id === moto.id} onOpenChange={(open) => !open && setMotoDetalhes(null)}>
                                                     <DialogTrigger asChild>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50" onClick={() => handleVerDetalhes(moto)}>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10" onClick={() => handleVerDetalhes(moto)}>
                                                             <FileJson className="w-4 h-4"/>
                                                         </Button>
                                                     </DialogTrigger>
-                                                    <DialogContent className="sm:max-w-2xl bg-white dark:bg-slate-950 p-0 overflow-hidden shadow-2xl rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                                                    <DialogContent className="sm:max-w-2xl bg-card p-0 overflow-hidden shadow-2xl rounded-2xl border border-slate-200/80 dark:border-slate-800">
                                                         {/* Header com gradiente */}
                                                         <div className="bg-gradient-to-r from-emerald-600 to-teal-800 dark:from-emerald-950 dark:to-teal-900 text-white p-6 relative overflow-hidden">
                                                             <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:14px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
@@ -456,30 +456,30 @@ export default function EstoquePage() {
                                                                 <>
                                                                     {/* Grid de Informações Chave */}
                                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                                        <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
-                                                                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                                                                <PaintBucket className="w-3.5 h-3.5 text-slate-400"/> Carenagem
+                                                                        <div className="bg-muted/50 p-3.5 rounded-xl border border-border flex flex-col justify-between">
+                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                                                                <PaintBucket className="w-3.5 h-3.5 text-muted-foreground"/> Carenagem
                                                                             </span>
                                                                             <div className="flex items-center gap-2 mt-2">
                                                                                 <div className="w-4 h-4 rounded-full border border-slate-300 dark:border-slate-700 shadow-sm" style={{backgroundColor: getHexColor(moto.cor)}}></div>
-                                                                                <span className="font-bold text-sm text-slate-800 dark:text-slate-200 capitalize">{moto.cor}</span>
+                                                                                <span className="font-bold text-sm text-foreground capitalize">{moto.cor}</span>
                                                                             </div>
                                                                         </div>
-                                                                        <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
-                                                                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                                                                <PaintBucket className="w-3.5 h-3.5 text-slate-400"/> Banco
+                                                                        <div className="bg-muted/50 p-3.5 rounded-xl border border-border flex flex-col justify-between">
+                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                                                                <PaintBucket className="w-3.5 h-3.5 text-muted-foreground"/> Banco
                                                                             </span>
-                                                                            <p className="font-bold text-sm text-slate-800 dark:text-slate-200 mt-2 capitalize">{moto.cor_banco || 'N/A'}</p>
+                                                                            <p className="font-bold text-sm text-foreground mt-2 capitalize">{moto.cor_banco || 'N/A'}</p>
                                                                         </div>
-                                                                        <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
-                                                                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                                                                <Calendar className="w-3.5 h-3.5 text-slate-400"/> Ano Modelo
+                                                                        <div className="bg-muted/50 p-3.5 rounded-xl border border-border flex flex-col justify-between">
+                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                                                                <Calendar className="w-3.5 h-3.5 text-muted-foreground"/> Ano Modelo
                                                                             </span>
-                                                                            <p className="font-bold text-sm text-slate-800 dark:text-slate-200 mt-2">{moto.ano}</p>
+                                                                            <p className="font-bold text-sm text-foreground mt-2">{moto.ano}</p>
                                                                         </div>
-                                                                        <div className="bg-slate-50 dark:bg-slate-900/50 p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 flex flex-col justify-between">
-                                                                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                                                                <Tag className="w-3.5 h-3.5 text-slate-400"/> Status
+                                                                        <div className="bg-muted/50 p-3.5 rounded-xl border border-border flex flex-col justify-between">
+                                                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                                                                                <Tag className="w-3.5 h-3.5 text-muted-foreground"/> Status
                                                                             </span>
                                                                             <Badge className="bg-emerald-500/10 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border-0 mt-2 text-[10px] w-fit px-2 py-0.5">
                                                                                 ESTOQUE
@@ -488,12 +488,12 @@ export default function EstoquePage() {
                                                                     </div>
 
                                                                     {/* Fluxo de Rastreabilidade */}
-                                                                    <div className="bg-slate-50 dark:bg-slate-900/30 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                                                                        <h4 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4">Fluxo de Rastreabilidade</h4>
+                                                                    <div className="bg-muted/50 p-4 rounded-xl border border-border">
+                                                                        <h4 className="text-xs font-black text-muted-foreground uppercase tracking-wider mb-4">Fluxo de Rastreabilidade</h4>
                                                                         
                                                                         <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-4 md:gap-0">
                                                                             {/* Linha conectora de fundo */}
-                                                                            <div className="absolute left-[15px] top-4 bottom-4 w-0.5 md:left-4 md:right-4 md:top-4 md:bottom-auto md:w-auto md:h-0.5 bg-slate-200 dark:bg-slate-800 z-0"></div>
+                                                                            <div className="absolute left-[15px] top-4 bottom-4 w-0.5 md:left-4 md:right-4 md:top-4 md:bottom-auto md:w-auto md:h-0.5 bg-muted z-0"></div>
                                                                             
                                                                             {/* Step 1: Montagem */}
                                                                             <div className="relative flex md:flex-col items-start md:items-center gap-3 md:gap-2 z-10 w-full md:w-1/4">
@@ -501,9 +501,9 @@ export default function EstoquePage() {
                                                                                      1
                                                                                 </div>
                                                                                 <div className="text-left md:text-center">
-                                                                                    <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Montagem</p>
-                                                                                    <p className="text-[10px] text-slate-500 font-medium">Por: {moto.montador?.nome?.split(' ')[0] || 'N/A'}</p>
-                                                                                    <p className="text-[9px] text-slate-400">{new Date(moto.created_at).toLocaleDateString()}</p>
+                                                                                    <p className="font-bold text-xs text-foreground">Montagem</p>
+                                                                                    <p className="text-[10px] text-muted-foreground font-medium">Por: {moto.montador?.nome?.split(' ')[0] || 'N/A'}</p>
+                                                                                    <p className="text-[9px] text-muted-foreground">{new Date(moto.created_at).toLocaleDateString()}</p>
                                                                                 </div>
                                                                             </div>
 
@@ -513,8 +513,8 @@ export default function EstoquePage() {
                                                                                      2
                                                                                 </div>
                                                                                 <div className="text-left md:text-center">
-                                                                                    <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Controle QA</p>
-                                                                                    <p className="text-[10px] text-slate-500 font-medium">Por: {moto.supervisor?.nome?.split(' ')[0] || 'N/A'}</p>
+                                                                                    <p className="font-bold text-xs text-foreground">Controle QA</p>
+                                                                                    <p className="text-[10px] text-muted-foreground font-medium">Por: {moto.supervisor?.nome?.split(' ')[0] || 'N/A'}</p>
                                                                                 </div>
                                                                             </div>
 
@@ -524,20 +524,20 @@ export default function EstoquePage() {
                                                                                      3
                                                                                 </div>
                                                                                 <div className="text-left md:text-center">
-                                                                                    <p className="font-bold text-xs text-slate-800 dark:text-slate-200">Etiquetagem</p>
-                                                                                    <p className="text-[10px] text-slate-500 font-medium">Etiqueta Aplicada</p>
+                                                                                    <p className="font-bold text-xs text-foreground">Etiquetagem</p>
+                                                                                    <p className="text-[10px] text-muted-foreground font-medium">Etiqueta Aplicada</p>
                                                                                 </div>
                                                                             </div>
 
                                                                             {/* Step 4: Estoque */}
                                                                             <div className="relative flex md:flex-col items-start md:items-center gap-3 md:gap-2 z-10 w-full md:w-1/4">
-                                                                                <div className="w-8 h-8 rounded-full bg-blue-600 text-white border-2 border-blue-500 flex items-center justify-center font-bold text-xs shadow-md shadow-blue-500/20 shrink-0">
+                                                                                <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground border-2 border-primary flex items-center justify-center font-bold text-xs shadow-md shadow-blue-500/20 shrink-0">
                                                                                      4
                                                                                 </div>
                                                                                 <div className="text-left md:text-center">
-                                                                                    <p className="font-bold text-xs text-blue-600 dark:text-blue-400">Em Estoque</p>
-                                                                                    <p className="text-[10px] text-slate-500 font-medium truncate max-w-[120px]">{moto.localizacao || 'Pátio de Estoque'}</p>
-                                                                                    <p className="text-[9px] text-slate-400">{new Date(moto.updated_at).toLocaleDateString()}</p>
+                                                                                    <p className="font-bold text-xs text-info">Em Estoque</p>
+                                                                                    <p className="text-[10px] text-muted-foreground font-medium truncate max-w-[120px]">{moto.localizacao || 'Pátio de Estoque'}</p>
+                                                                                    <p className="text-[9px] text-muted-foreground">{new Date(moto.updated_at).toLocaleDateString()}</p>
                                                                                 </div>
                                                                             </div>
                                                                         </div>
@@ -545,8 +545,8 @@ export default function EstoquePage() {
 
                                                                     {/* Histórico de Qualidade */}
                                                                     <div className="space-y-4">
-                                                                        <h4 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 pb-2 flex items-center gap-1.5">
-                                                                            <Wrench className="w-4 h-4 text-slate-400"/> Histórico de Qualidade & Reparos
+                                                                        <h4 className="text-xs font-black text-muted-foreground uppercase tracking-wider border-b border-border pb-2 flex items-center gap-1.5">
+                                                                            <Wrench className="w-4 h-4 text-muted-foreground"/> Histórico de Qualidade & Reparos
                                                                         </h4>
 
                                                                         {motoDetalhes?.rework_count > 0 && (
@@ -564,22 +564,22 @@ export default function EstoquePage() {
                                                                         )}
 
                                                                         {motoDetalhes?.tecnico_reparo && (
-                                                                            <div className="bg-blue-500/5 border border-blue-500/10 text-slate-700 dark:text-slate-300 p-4 rounded-xl space-y-2">
-                                                                                <div className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                                                                            <div className="bg-info/10 border border-info/20 text-foreground/90 p-4 rounded-xl space-y-2">
+                                                                                <div className="flex items-center gap-2 text-xs font-bold text-info uppercase tracking-wider">
                                                                                     <Wrench className="w-4 h-4"/> Último Reparo Concluído
                                                                                 </div>
-                                                                                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-white dark:bg-slate-900/60 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80">
+                                                                                <p className="text-xs text-muted-foreground leading-relaxed bg-card p-2.5 rounded-lg border border-border">
                                                                                     &quot;{motoDetalhes.observacoes || "Sem observações detalhadas registradas."}&quot;
                                                                                 </p>
-                                                                                <div className="text-[10px] text-slate-400">
-                                                                                    Técnico Responsável: <strong className="text-slate-600 dark:text-slate-300">{motoDetalhes.tecnico_reparo}</strong>
+                                                                                <div className="text-[10px] text-muted-foreground">
+                                                                                    Técnico Responsável: <strong className="text-muted-foreground">{motoDetalhes.tecnico_reparo}</strong>
                                                                                 </div>
                                                                             </div>
                                                                         )}
 
                                                                         {historicoAvarias.length > 0 ? (
                                                                             <div className="space-y-3">
-                                                                                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Histórico Detalhado de Falhas</p>
+                                                                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Histórico Detalhado de Falhas</p>
                                                                                 <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1">
                                                                                     {historicoAvarias.map((av, idx) => (
                                                                                         <div key={idx} className="bg-red-500/5 dark:bg-red-500/5 p-3.5 rounded-xl border border-red-500/10 dark:border-red-500/10 text-sm">
@@ -587,9 +587,9 @@ export default function EstoquePage() {
                                                                                                 <span className="font-bold text-red-600 dark:text-red-400 capitalize text-[10px] bg-red-500/10 dark:bg-red-500/20 px-2 py-0.5 rounded-md">
                                                                                                     {av.tipo_avaria.replace('avaria_', '').replace('_', ' ')}
                                                                                                 </span>
-                                                                                                <span className="text-[10px] text-slate-400">{new Date(av.created_at).toLocaleDateString()}</span>
+                                                                                                <span className="text-[10px] text-muted-foreground">{new Date(av.created_at).toLocaleDateString()}</span>
                                                                                             </div>
-                                                                                            <p className="text-xs text-slate-600 dark:text-slate-300 italic">&quot;{av.descricao_problema}&quot;</p>
+                                                                                            <p className="text-xs text-muted-foreground italic">&quot;{av.descricao_problema}&quot;</p>
                                                                                             
                                                                                             {av.descricao_solucao && (
                                                                                                 <div className="mt-2.5 pt-2 border-t border-red-500/10 dark:border-red-500/10">
@@ -609,9 +609,9 @@ export default function EstoquePage() {
                                                                             </div>
                                                                         ) : (
                                                                             !motoDetalhes?.rework_count && !motoDetalhes?.tecnico_reparo && (
-                                                                                <div className="text-center py-8 text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900/20 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                                                                                <div className="text-center py-8 text-muted-foreground bg-muted/50 rounded-xl border border-dashed border-border">
                                                                                     <CheckCircle2 className="w-10 h-10 mx-auto mb-2.5 text-emerald-500/50"/>
-                                                                                    <p className="font-bold text-sm text-slate-700 dark:text-slate-300">Veículo de Primeira Linha</p>
+                                                                                    <p className="font-bold text-sm text-foreground/90">Veículo de Primeira Linha</p>
                                                                                     <p className="text-xs mt-0.5">Nenhum defeito ou retrabalho foi registrado para esta moto.</p>
                                                                                 </div>
                                                                             )
@@ -624,7 +624,7 @@ export default function EstoquePage() {
                                                                         <AlertCircle className="w-6 h-6 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
                                                                         <div>
                                                                              <h4 className="font-bold text-sm">Atenção: Reversão de Status</h4>
-                                                                             <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                                                                             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                                                                                   Ao reverter a moto para a etapa de Etiquetagem, ela sairá do Estoque Disponível e voltará para a fila de impressão. A sua localização será alterada para <strong>Pátio Montada (Aguardando Etiqueta)</strong>.
                                                                              </p>
                                                                         </div>
@@ -633,11 +633,11 @@ export default function EstoquePage() {
                                                                     {/* Formulário de Reversão */}
                                                                     <div className="space-y-4">
                                                                          <div className="space-y-2">
-                                                                              <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                                                              <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">
                                                                                    Selecione o Motivo da Reversão
                                                                               </label>
                                                                               <Select value={reverterMotivo} onValueChange={setReverterMotivo}>
-                                                                                   <SelectTrigger className="w-full h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                                                                                   <SelectTrigger className="w-full h-11 border-border bg-card">
                                                                                         <SelectValue placeholder="Selecione um motivo..." />
                                                                                    </SelectTrigger>
                                                                                    <SelectContent>
@@ -651,14 +651,14 @@ export default function EstoquePage() {
 
                                                                          {reverterMotivo === "outro" && (
                                                                               <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
-                                                                                   <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                                                                   <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">
                                                                                         Especifique o Motivo
                                                                                    </label>
                                                                                    <Input 
                                                                                         placeholder="Digite o motivo detalhado..."
                                                                                         value={reverterMotivoCustom}
                                                                                         onChange={e => setReverterMotivoCustom(e.target.value)}
-                                                                                        className="h-11 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+                                                                                        className="h-11 border-border bg-card"
                                                                                    />
                                                                               </div>
                                                                          )}
@@ -671,7 +671,7 @@ export default function EstoquePage() {
                                                                                    onChange={(e) => setDeclaracaoReverter(e.target.checked)}
                                                                                    className="mt-1 w-4 h-4 rounded text-amber-600 focus:ring-amber-500 border-slate-300 dark:border-slate-700"
                                                                               />
-                                                                              <span className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-normal">
+                                                                              <span className="text-xs font-medium text-muted-foreground leading-normal">
                                                                                    Confirmo que esta moto deve retornar para a etapa de Etiquetagem e todas as áreas operacionais correspondentes serão notificadas desta alteração.
                                                                               </span>
                                                                          </label>
@@ -681,9 +681,10 @@ export default function EstoquePage() {
                                                         </div>
 
                                                         {/* Footer com Ação de Reversão */}
-                                                        <DialogFooter className="p-4 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center w-full gap-2 sm:gap-0">
+                                                        <DialogFooter className="p-4 bg-muted/50 border-t border-border flex justify-between items-center w-full gap-2 sm:gap-0">
                                                             {!isRevertingConfirm ? (
                                                                 <>
+                                                                    {podeEditar ? (
                                                                     <Button 
                                                                         variant="outline" 
                                                                         onClick={() => setIsRevertingConfirm(true)}
@@ -692,6 +693,7 @@ export default function EstoquePage() {
                                                                         <RotateCcw className="w-4 h-4"/>
                                                                         Reverter para Etiquetagem
                                                                     </Button>
+                                                                    ) : <span className="mr-auto" />}
                                                                     <Button variant="ghost" onClick={() => setMotoDetalhes(null)} className="h-10">
                                                                         Fechar
                                                                     </Button>
@@ -701,7 +703,7 @@ export default function EstoquePage() {
                                                                     <Button 
                                                                         variant="ghost" 
                                                                         onClick={() => setIsRevertingConfirm(false)}
-                                                                        className="h-10 text-slate-500 dark:text-slate-400 font-bold"
+                                                                        className="h-10 text-muted-foreground font-bold"
                                                                         disabled={revertendo}
                                                                     >
                                                                         Voltar aos Detalhes
@@ -716,7 +718,7 @@ export default function EstoquePage() {
                                                                              className={`h-10 font-bold ${
                                                                                   declaracaoReverter && (reverterMotivo !== "outro" || reverterMotivoCustom.trim())
                                                                                        ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-lg shadow-amber-600/20' 
-                                                                                       : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'
+                                                                                       : 'bg-slate-100 text-muted-foreground dark:bg-slate-800 dark:text-slate-600'
                                                                              }`}
                                                                          >
                                                                               {revertendo ? "Revertendo..." : "Confirmar Reversão"}
@@ -728,17 +730,23 @@ export default function EstoquePage() {
                                                     </DialogContent>
                                                 </Dialog>
 
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50" onClick={() => handleReimprimir(moto)} disabled={reimprimindo === moto.id} title="Reimprimir etiqueta" aria-label="Reimprimir etiqueta">
-                                                    {reimprimindo === moto.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Printer className="w-4 h-4"/>}
-                                                </Button>
+                                                {podeReimprimir && (
+                                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => handleReimprimir(moto)} disabled={reimprimindo === moto.id} title="Reimprimir etiqueta" aria-label="Reimprimir etiqueta">
+                                                      {reimprimindo === moto.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <Printer className="w-4 h-4"/>}
+                                                  </Button>
+                                                )}
 
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-amber-600 hover:bg-amber-50" onClick={() => handleAbrirEditar(moto)} title="Editar Moto" aria-label="Editar moto">
-                                                    <Pencil className="w-4 h-4"/>
-                                                </Button>
-                                                
-                                                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs font-bold" onClick={() => setMotoSaida(moto)}>
-                                                    <Truck className="w-3 h-3 mr-2"/> EXPEDIR
-                                                </Button>
+                                                {podeEditar && (
+                                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-warning" onClick={() => handleAbrirEditar(moto)} title="Editar moto" aria-label="Editar moto">
+                                                      <Pencil className="w-4 h-4"/>
+                                                  </Button>
+                                                )}
+
+                                                {podeExpedir && (
+                                                  <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground h-8 text-xs font-bold" onClick={() => setMotoSaida(moto)}>
+                                                      <Truck className="w-3 h-3 mr-2"/> EXPEDIR
+                                                  </Button>
+                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -752,14 +760,14 @@ export default function EstoquePage() {
 
         {/* Modal de Saída */}
         <Dialog open={!!motoSaida} onOpenChange={(open) => !open && !expedindo && setMotoSaida(null)}>
-            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+            <DialogContent className="bg-card border-border">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2"><Truck className="w-5 h-5 text-emerald-600"/> Confirmar Expedição</DialogTitle>
                     <DialogDescription>A moto sai do estoque disponível e fica registrada como expedida.</DialogDescription>
                 </DialogHeader>
                 <div className="py-2">
                     <p>Deseja dar baixa na moto <strong>{motoSaida?.modelo}</strong>?</p>
-                    <div className="mt-2 bg-slate-100 dark:bg-slate-900 p-2 rounded text-sm font-mono text-slate-600 dark:text-slate-300">{motoSaida?.sku}</div>
+                    <div className="mt-2 bg-muted p-2 rounded text-sm font-mono text-muted-foreground">{motoSaida?.sku}</div>
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={() => setMotoSaida(null)} disabled={expedindo}>Cancelar</Button>
@@ -772,25 +780,25 @@ export default function EstoquePage() {
 
         {/* Modal de Edição QoL */}
         <Dialog open={!!motoEditando} onOpenChange={(open) => !open && setMotoEditando(null)}>
-            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+            <DialogContent className="bg-card border-border">
                 <DialogHeader>
                     <DialogTitle className="text-amber-600 flex items-center gap-2">
                         <Pencil className="w-5 h-5"/> Editar Informações da Moto
                     </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
-                    <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
-                        <p className="text-xs text-slate-400 uppercase font-bold">Chassi (VIN / SKU)</p>
-                        <p className="font-mono text-lg font-bold tracking-widest text-slate-800 dark:text-slate-100">{motoEditando?.sku}</p>
+                    <div className="bg-muted/50 p-3 rounded-lg border border-border">
+                        <p className="text-xs text-muted-foreground uppercase font-bold">Chassi (VIN / SKU)</p>
+                        <p className="font-mono text-lg font-bold tracking-widest text-foreground">{motoEditando?.sku}</p>
                     </div>
 
-                    <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <div className="flex items-center gap-4 border-b border-border pb-3">
                          <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                               <input 
                                    type="radio" 
                                    checked={!usarCustomModeloEdit} 
                                    onChange={() => setUsarCustomModeloEdit(false)} 
-                                   className="text-blue-600 focus:ring-blue-500"
+                                   className="text-primary focus:ring-ring"
                               />
                               Selecionar modelo do catálogo
                          </label>
@@ -799,7 +807,7 @@ export default function EstoquePage() {
                                    type="radio" 
                                    checked={usarCustomModeloEdit} 
                                    onChange={() => setUsarCustomModeloEdit(true)} 
-                                   className="text-blue-600 focus:ring-blue-500"
+                                   className="text-primary focus:ring-ring"
                               />
                               Digitar modelo manualmente
                          </label>
@@ -807,7 +815,7 @@ export default function EstoquePage() {
 
                     {!usarCustomModeloEdit ? (
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-400 uppercase">Modelo do Catálogo</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase">Modelo do Catálogo</label>
                             <Select onValueChange={setModeloEdit} value={modeloEdit}>
                                 <SelectTrigger className="w-full">
                                      <SelectValue placeholder="Selecione um modelo..."/>
@@ -821,7 +829,7 @@ export default function EstoquePage() {
                         </div>
                     ) : (
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-400 uppercase">Modelo Personalizado</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase">Modelo Personalizado</label>
                             <Input 
                                  placeholder="Ex: SHI 175 EFI 2026..." 
                                  value={customModeloEdit} 
@@ -833,7 +841,7 @@ export default function EstoquePage() {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-400 uppercase">Cor da Carenagem</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase">Cor da Carenagem</label>
                             <Input 
                                  placeholder="Ex: Vermelha..." 
                                  value={corEdit} 
@@ -845,7 +853,7 @@ export default function EstoquePage() {
                             </datalist>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-400 uppercase">Cor do Banco</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase">Cor do Banco</label>
                             <Input 
                                  placeholder="Ex: Preto..." 
                                  value={corBancoEdit} 
@@ -868,6 +876,5 @@ export default function EstoquePage() {
         </Dialog>
 
       </div>
-    </RoleGuard>
   );
 }

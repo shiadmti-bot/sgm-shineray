@@ -7,7 +7,7 @@ import {
   SlidersHorizontal, Target, ListChecks, PaintBucket, Armchair, Bike, Tag, Cloud, HardDrive, Database,
   ArrowUp, ArrowDown, Trash2, Plus, Save, Loader2, ArrowRight, ChevronDown, ChevronRight,
 } from "lucide-react";
-import { RoleGuard } from "@/components/RoleGuard";
+import { PageHeader } from "@/components/sgm/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -43,9 +43,9 @@ function BotoesOrdem({ idx, total, onMover, onRemover }: { idx: number; total: n
 function EditorCores({ titulo, descricao, icone: Icone, cores, onChange }: { titulo: string; descricao: string; icone: typeof PaintBucket; cores: CorCatalogo[]; onChange: (c: CorCatalogo[]) => void }) {
   const alterar = (idx: number, parcial: Partial<CorCatalogo>) => onChange(cores.map((c, i) => (i === idx ? { ...c, ...parcial } : c)));
   return (
-    <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+    <Card className="bg-card border-border">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base flex items-center gap-2"><Icone className="w-5 h-5 text-slate-500" /> {titulo}</CardTitle>
+        <CardTitle className="text-base flex items-center gap-2"><Icone className="w-5 h-5 text-muted-foreground" /> {titulo}</CardTitle>
         <CardDescription>{descricao}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -133,9 +133,9 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
   return (
     <div className="space-y-6">
       {/* Produção e alertas */}
-      <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+      <Card className="bg-card border-border">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><Target className="w-5 h-5 text-slate-500" /> Produção e alertas</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2"><Target className="w-5 h-5 text-muted-foreground" /> Produção e alertas</CardTitle>
           <CardDescription>Usados na Torre de Controle e nas telas da linha.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -146,7 +146,7 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
             ["limiteFilaQA", "Alerta de fila na inspeção", 1, 999, "motos"],
           ] as const).map(([chave, rotulo, min, max, sufixo]) => (
             <label key={chave} className="space-y-1 block">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{rotulo}</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{rotulo}</span>
               <div className="relative">
                 <Input
                   type="number"
@@ -156,7 +156,7 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
                   onChange={(e) => set(chave, Math.max(min, Math.min(max, Number(e.target.value) || min)))}
                   className="h-10 pr-14"
                 />
-                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">{sufixo}</span>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{sufixo}</span>
               </div>
             </label>
           ))}
@@ -164,22 +164,22 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
       </Card>
 
       {/* Checklist */}
-      <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+      <Card className="bg-card border-border">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><ListChecks className="w-5 h-5 text-slate-500" /> Checklist de montagem</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2"><ListChecks className="w-5 h-5 text-muted-foreground" /> Checklist de montagem</CardTitle>
           <CardDescription>Itens obrigatórios antes de enviar a moto para a qualidade.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {cfg.checklist.map((item, idx) => (
             <div key={idx} className="flex items-center gap-2">
-              <span className="w-6 text-right text-xs font-mono text-slate-400 shrink-0">{idx + 1}.</span>
+              <span className="w-6 text-right text-xs font-mono text-muted-foreground shrink-0">{idx + 1}.</span>
               <Input value={item} onChange={(e) => set("checklist", cfg.checklist.map((x, i) => (i === idx ? e.target.value : x)))} className="h-9" />
               <BotoesOrdem idx={idx} total={cfg.checklist.length} onMover={(d) => set("checklist", mover(cfg.checklist, idx, d))} onRemover={() => set("checklist", cfg.checklist.filter((_, i) => i !== idx))} />
             </div>
           ))}
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => set("checklist", [...cfg.checklist, ""])}><Plus className="w-4 h-4 mr-1" /> Adicionar item</Button>
-            <Button type="button" variant="ghost" size="sm" className="text-slate-500" onClick={() => set("checklist", clonar(CONFIG_GERAL_PADRAO.checklist))}>Restaurar padrão</Button>
+            <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => set("checklist", clonar(CONFIG_GERAL_PADRAO.checklist))}>Restaurar padrão</Button>
           </div>
         </CardContent>
       </Card>
@@ -190,9 +190,9 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
       </div>
 
       {/* Modelos VDS */}
-      <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+      <Card className="bg-card border-border">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><Bike className="w-5 h-5 text-slate-500" /> Modelos por código do chassi (VDS)</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2"><Bike className="w-5 h-5 text-muted-foreground" /> Modelos por código do chassi (VDS)</CardTitle>
           <CardDescription>
             Cadastre lançamentos sem precisar atualizar o sistema. O VDS são os 6 caracteres após os 3 primeiros do chassi
             (ex.: 99H<strong>NJ1125</strong>T8000462). Códigos cadastrados aqui têm prioridade sobre a tabela interna ({Object.keys(VDS_MAP).length} códigos).
@@ -200,7 +200,7 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            {cfg.modelosExtras.length === 0 && <p className="text-sm text-slate-400">Nenhum código adicional cadastrado.</p>}
+            {cfg.modelosExtras.length === 0 && <p className="text-sm text-muted-foreground">Nenhum código adicional cadastrado.</p>}
             {cfg.modelosExtras.map((m, idx) => (
               <div key={idx} className="flex items-center gap-2">
                 <Input value={m.vds} onChange={(e) => set("modelosExtras", cfg.modelosExtras.map((x, i) => (i === idx ? { ...x, vds: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) } : x)))} placeholder="VDS" className="h-9 w-28 font-mono uppercase shrink-0" />
@@ -211,8 +211,8 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
             <Button type="button" variant="outline" size="sm" onClick={() => set("modelosExtras", [...cfg.modelosExtras, { vds: "", modelo: "" }])}><Plus className="w-4 h-4 mr-1" /> Adicionar código</Button>
           </div>
 
-          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
-            <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Testar um chassi</label>
+          <div className="p-3 rounded-xl bg-muted/50 border border-border space-y-2">
+            <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Testar um chassi</label>
             <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
               <Input value={vinTeste} onChange={(e) => setVinTeste(e.target.value.toUpperCase())} maxLength={17} placeholder="Cole ou bipe um chassi de 17 caracteres" className="h-9 font-mono uppercase sm:max-w-sm" />
               {resultadoTeste && (
@@ -223,13 +223,13 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
             </div>
           </div>
 
-          <button type="button" className="text-xs font-bold text-slate-500 flex items-center gap-1" onClick={() => setVerTabela((v) => !v)}>
+          <button type="button" className="text-xs font-bold text-muted-foreground flex items-center gap-1" onClick={() => setVerTabela((v) => !v)}>
             {verTabela ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />} Ver tabela interna de códigos
           </button>
           {verTabela && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1 text-xs max-h-64 overflow-y-auto p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1 text-xs max-h-64 overflow-y-auto p-3 rounded-xl border border-border">
               {Object.entries(VDS_MAP).map(([vds, modelo]) => (
-                <div key={vds} className="flex gap-2"><span className="font-mono font-bold w-16 shrink-0">{vds}</span><span className="text-slate-500 truncate">{modelo}</span></div>
+                <div key={vds} className="flex gap-2"><span className="font-mono font-bold w-16 shrink-0">{vds}</span><span className="text-muted-foreground truncate">{modelo}</span></div>
               ))}
             </div>
           )}
@@ -237,13 +237,13 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
       </Card>
 
       {/* Etiquetas */}
-      <Card className="py-0 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+      <Card className="py-0 bg-card border-border">
         <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600"><Tag className="w-6 h-6" /></div>
+            <div className="p-3 rounded-xl bg-info/10 text-primary"><Tag className="w-6 h-6" /></div>
             <div>
               <p className="font-bold">Layout das etiquetas</p>
-              <p className="text-sm text-slate-500">Tamanho, blocos, fontes, código de barras/QR, campos e calibração da impressora.</p>
+              <p className="text-sm text-muted-foreground">Tamanho, blocos, fontes, código de barras/QR, campos e calibração da impressora.</p>
             </div>
           </div>
           <Link href="/etiquetagem?aba=layout">
@@ -253,9 +253,9 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
       </Card>
 
       {/* Armazenamento */}
-      <Card className={cn("py-0 border", tabelaAusente ? "border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20" : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800")}>
+      <Card className={cn("py-0 border", tabelaAusente ? "border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20" : "bg-card border-border")}>
         <CardContent className="p-5 flex items-start gap-3">
-          <Database className={cn("w-6 h-6 shrink-0 mt-0.5", tabelaAusente ? "text-amber-600" : "text-slate-400")} />
+          <Database className={cn("w-6 h-6 shrink-0 mt-0.5", tabelaAusente ? "text-amber-600" : "text-muted-foreground")} />
           <div className="text-sm space-y-1">
             <p className="font-bold flex items-center gap-2">
               Armazenamento das configurações
@@ -263,13 +263,13 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
                 : <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0"><HardDrive className="w-3 h-3 mr-1" /> Local</Badge>}
             </p>
             {tabelaAusente ? (
-              <p className="text-slate-600 dark:text-slate-300">
+              <p className="text-muted-foreground">
                 A tabela <code className="font-mono">configuracoes_sistema</code> ainda não existe no Supabase, então as alterações ficam só neste navegador.
                 Para compartilhar entre todas as estações, execute no SQL Editor do Supabase o arquivo
                 <code className="font-mono"> supabase/migrations/20260928120000_configuracoes_sistema.sql</code> do repositório.
               </p>
             ) : (
-              <p className="text-slate-500">As configurações são gravadas no banco e valem para todas as estações (atualização em até 1 minuto).</p>
+              <p className="text-muted-foreground">As configurações são gravadas no banco e valem para todas as estações (atualização em até 1 minuto).</p>
             )}
           </div>
         </CardContent>
@@ -277,12 +277,12 @@ function Formulario({ inicial, origem, tabelaAusente, onSalvo }: { inicial: Conf
 
       {/* Barra de salvar */}
       <div className="sticky bottom-4 z-30">
-        <Card className={cn("py-0 gap-0 border-2 shadow-xl", alterado ? "border-blue-400 bg-white dark:bg-slate-900" : "border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90")}>
+        <Card className={cn("py-0 gap-0 border-2 shadow-xl", alterado ? "border-blue-400 bg-card" : "border-border bg-card/90")}>
           <CardContent className="p-3 flex items-center justify-between gap-3">
-            <span className="text-xs text-slate-500">{alterado ? "Há alterações não salvas." : "Nenhuma alteração pendente."}</span>
+            <span className="text-xs text-muted-foreground">{alterado ? "Há alterações não salvas." : "Nenhuma alteração pendente."}</span>
             <div className="flex gap-2">
               <Button variant="ghost" disabled={!alterado || salvando} onClick={() => setCfg(clonar(base))}>Descartar</Button>
-              <Button disabled={!alterado || salvando} onClick={salvar} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
+              <Button disabled={!alterado || salvando} onClick={salvar} className="bg-primary hover:bg-primary/90 text-white font-bold">
                 {salvando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />} Salvar
               </Button>
             </div>
@@ -297,20 +297,17 @@ export default function ConfiguracoesPage() {
   const { config, origem, tabelaAusente, carregando, recarregar } = useConfigGeral();
 
   return (
-    <RoleGuard allowedRoles={["gestor", "master"]}>
       <div className="space-y-6 animate-in fade-in pb-10">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
-            <SlidersHorizontal className="w-8 h-8 text-blue-600" /> Configurações do Sistema
-          </h1>
-          <p className="text-slate-500">Parâmetros da operação ajustáveis sem atualizar o sistema.</p>
-        </div>
+        <PageHeader
+          icone={SlidersHorizontal}
+          titulo="Configurações do sistema"
+          descricao="Metas, alertas, checklist, cores e modelos: ajustáveis sem atualizar o sistema."
+        />
         {carregando ? (
           <div className="space-y-4">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-40 w-full rounded-2xl" />)}</div>
         ) : (
           <Formulario inicial={config} origem={origem} tabelaAusente={tabelaAusente} onSalvo={recarregar} />
         )}
       </div>
-    </RoleGuard>
   );
 }

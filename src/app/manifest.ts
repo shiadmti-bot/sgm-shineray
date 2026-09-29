@@ -5,11 +5,11 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'SGM Shineray',
     short_name: 'SGM',
     description: 'Sistema de Gestão de Montagem e Qualidade',
-    start_url: '/', // Mudei para raiz '/' para evitar erros de redirecionamento
-    display: 'standalone', // ISSO é o que tira a barra de navegação
+    start_url: '/',
+    display: 'standalone', // sem a barra do navegador
     background_color: '#ffffff',
-    theme_color: '#2563eb',
-    orientation: 'portrait', // Força modo retrato no celular
+    theme_color: '#dc2626',
+    orientation: 'any', // tablets da linha ficam em paisagem ou retrato
     icons: [
       {
         src: '/icon-192.png', // Caminho na pasta public

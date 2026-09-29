@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { RoleGuard } from "@/components/RoleGuard";
 import { 
   ClipboardCheck, CheckCircle2, User, RotateCcw, 
   Wrench, PaintBucket, Armchair, Clock, Calendar, Timer, AlertTriangle, Loader2, Hourglass
@@ -17,6 +16,8 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { registrarLog } from "@/lib/logger";
 import { getUsuarioLogado } from "@/lib/auth";
+import { FotosMoto } from "@/components/sgm/FotosMoto";
+import { EmptyState } from "@/components/sgm/EmptyState";
 import { useConfigGeral } from "@/lib/config-sistema";
 import { TIPOS_AVARIA, getHexColor as corHex } from "@/lib/constantes";
 import { formatarDuracaoMin, minutosDesde } from "@/lib/datas";
@@ -213,24 +214,23 @@ export default function QualidadePage() {
   };
 
   return (
-    <RoleGuard allowedRoles={['supervisor', 'gestor', 'master']}>
       <div className="space-y-6 animate-in fade-in pb-20">
         
-        {/* Banner com Gradiente e Infos */}
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-800 dark:from-purple-950 dark:to-indigo-950 text-white p-6 rounded-2xl relative overflow-hidden shadow-lg border border-purple-500/10">
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:16px_16px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"></div>
-          <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-4 z-10">
+        {/* Cabeçalho */}
+        <div className="relative overflow-hidden rounded-2xl bg-zinc-950 p-6 text-white shadow-lg">
+          <div className="pointer-events-none absolute -right-16 -top-24 size-72 rounded-full bg-red-600/30 blur-3xl" />
+          <div className="relative z-10 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
             <div>
-              <span className="text-[10px] bg-purple-500/30 text-purple-100 border border-purple-400/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                   Controle de Qualidade
+              <span className="rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/70">
+                   Controle de qualidade
               </span>
-              <h1 className="text-3xl font-black mt-1.5 flex items-center gap-2">
-                 <ClipboardCheck className="w-8 h-8 text-purple-100" /> Inspeção de Qualidade
+              <h1 className="mt-1.5 flex items-center gap-2 text-3xl font-black">
+                 <ClipboardCheck className="size-8 text-red-400" /> Inspeção de qualidade
               </h1>
-              <p className="text-sm text-purple-200/90 mt-1">Validação final de montagem antes do envio ao estoque principal.</p>
+              <p className="mt-1 text-sm text-white/70">Validação final da montagem antes da etiquetagem. Registre fotos de qualquer defeito.</p>
             </div>
-            <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl text-center border border-white/15">
-              <span className="block text-[10px] font-black text-purple-200 uppercase tracking-wider">Fila de Espera</span>
+            <div className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-center backdrop-blur-md">
+              <span className="block text-[10px] font-black uppercase tracking-wider text-white/60">Fila de espera</span>
               <span className="text-2xl font-black">{totalFila} moto(s)</span>
             </div>
           </div>
@@ -238,11 +238,11 @@ export default function QualidadePage() {
 
         {/* Cards de Métricas da Fila */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="border-l-4 border-l-purple-500 shadow-md bg-white dark:bg-slate-900 overflow-hidden relative group hover:shadow-lg transition-all border-slate-200 dark:border-slate-800">
+            <Card className="border-l-4 border-l-purple-500 shadow-md bg-card overflow-hidden relative group hover:shadow-lg transition-all border-border">
                 <CardContent className="p-5 flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider">Total na Fila</p>
-                        <p className="text-3xl font-black text-slate-900 dark:text-white mt-1.5">{totalFila}</p>
+                        <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">Total na Fila</p>
+                        <p className="text-3xl font-black text-foreground mt-1.5">{totalFila}</p>
                     </div>
                     <div className="p-3 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-xl group-hover:scale-110 transition-transform">
                         <ClipboardCheck className="w-6 h-6"/>
@@ -250,10 +250,10 @@ export default function QualidadePage() {
                 </CardContent>
             </Card>
 
-            <Card className="border-l-4 border-l-green-500 shadow-md bg-white dark:bg-slate-900 overflow-hidden relative group hover:shadow-lg transition-all border-slate-200 dark:border-slate-800">
+            <Card className="border-l-4 border-l-green-500 shadow-md bg-card overflow-hidden relative group hover:shadow-lg transition-all border-border">
                 <CardContent className="p-5 flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider">Aguardando 1ª Passagem</p>
+                        <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">Aguardando 1ª Passagem</p>
                         <p className="text-3xl font-black text-green-600 dark:text-green-400 mt-1.5">{totalPrimeiraPassagem}</p>
                     </div>
                     <div className="p-3 bg-green-500/10 text-green-600 dark:text-green-400 rounded-xl group-hover:scale-110 transition-transform">
@@ -262,13 +262,13 @@ export default function QualidadePage() {
                 </CardContent>
             </Card>
 
-            <Card className={`border-l-4 ${totalRetorno > 0 ? 'border-l-amber-500 bg-amber-500/5' : 'border-l-slate-300'} shadow-md bg-white dark:bg-slate-900 overflow-hidden relative group hover:shadow-lg transition-all border-slate-200 dark:border-slate-800`}>
+            <Card className={`border-l-4 ${totalRetorno > 0 ? 'border-l-amber-500 bg-amber-500/5' : 'border-l-slate-300'} shadow-md bg-card overflow-hidden relative group hover:shadow-lg transition-all border-border`}>
                 <CardContent className="p-5 flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider">Reinspeções (Urgente)</p>
-                        <p className={`text-3xl font-black mt-1.5 ${totalRetorno > 0 ? 'text-amber-600' : 'text-slate-900 dark:text-white'}`}>{totalRetorno}</p>
+                        <p className="text-xs font-black text-muted-foreground uppercase tracking-wider">Reinspeções (Urgente)</p>
+                        <p className={`text-3xl font-black mt-1.5 ${totalRetorno > 0 ? 'text-amber-600' : 'text-foreground'}`}>{totalRetorno}</p>
                     </div>
-                    <div className={`p-3 rounded-xl group-hover:scale-110 transition-transform ${totalRetorno > 0 ? 'bg-amber-500/10 text-amber-600' : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500'}`}>
+                    <div className={`p-3 rounded-xl group-hover:scale-110 transition-transform ${totalRetorno > 0 ? 'bg-amber-500/10 text-amber-600' : 'bg-slate-100 text-muted-foreground dark:bg-slate-800 dark:text-slate-500'}`}>
                         <RotateCcw className="w-6 h-6"/>
                     </div>
                 </CardContent>
@@ -284,11 +284,7 @@ export default function QualidadePage() {
             )}
             
             {!loading && listaAnalise.length === 0 && (
-                <div className="text-center py-24 text-slate-400 border-2 border-dashed rounded-2xl bg-slate-50 dark:bg-slate-900/30 border-slate-200 dark:border-slate-800">
-                    <CheckCircle2 className="w-16 h-16 mx-auto mb-4 text-green-500/60 animate-bounce"/>
-                    <h2 className="text-xl font-black text-slate-700 dark:text-slate-300">Fila Limpa!</h2>
-                    <p className="text-sm text-slate-500 mt-1">Nenhum veículo aguardando inspeção de qualidade no momento.</p>
-                </div>
+                <EmptyState icone={CheckCircle2} titulo="Fila limpa!" descricao="Nenhuma moto aguardando inspeção de qualidade no momento." />
             )}
 
             {listaAnalise.map((moto) => {
@@ -296,16 +292,16 @@ export default function QualidadePage() {
                 const temReparo = !!moto.tecnico_reparo;
 
                 return (
-                    <Card key={moto.id} className={`border-l-4 ${getBorderColor(moto)} shadow-md hover:shadow-xl transition-all overflow-hidden bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800`}>
+                    <Card key={moto.id} className={`py-0 gap-0 border-l-4 ${getBorderColor(moto)} shadow-md hover:shadow-xl transition-all overflow-hidden bg-card border-border`}>
                         <CardContent className="p-0">
                             {/* Header do Card */}
-                            <div className="bg-slate-50/80 dark:bg-slate-950/80 p-4 border-b border-slate-100 dark:border-slate-800/80 flex flex-wrap justify-between items-center gap-4">
+                            <div className="bg-muted/50 p-4 border-b border-border flex flex-wrap justify-between items-center gap-4">
                                 <div>
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <Badge variant="outline" className="font-mono bg-white dark:bg-slate-900 text-sm px-3 py-1 border-purple-200 text-slate-700 dark:text-slate-200">
+                                        <Badge variant="outline" className="font-mono bg-card text-sm px-3 py-1 border-purple-200 text-foreground">
                                              {moto.sku}
                                         </Badge>
-                                        <Badge className="bg-blue-500/10 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 border-0 text-xs font-bold px-2 py-0.5">
+                                        <Badge className="bg-info/10 text-info border-0 text-xs font-bold px-2 py-0.5">
                                              {moto.ano}
                                         </Badge>
                                         {temRework && (
@@ -314,27 +310,27 @@ export default function QualidadePage() {
                                              </Badge>
                                         )}
                                         {temReparo && (
-                                             <Badge className="bg-blue-500/10 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 border-0 text-[10px] font-black uppercase tracking-wider">
+                                             <Badge className="bg-info/10 text-info border-0 text-[10px] font-black uppercase tracking-wider">
                                                   RETORNO OFICINA
                                              </Badge>
                                         )}
                                     </div>
-                                    <h3 className="font-black text-2xl text-slate-900 dark:text-white mt-2.5">{moto.modelo}</h3>
+                                    <h3 className="font-black text-2xl text-foreground mt-2.5">{moto.modelo}</h3>
                                 </div>
                                 <div className="text-left sm:text-right">
                                     {(() => {
                                         const espera = minutosDesde(moto.fim_montagem);
                                         return (
-                                            <div className={`text-[11px] font-bold flex items-center gap-1 sm:justify-end mb-1 ${espera >= 30 ? 'text-red-600' : espera >= 15 ? 'text-amber-600' : 'text-slate-400'}`}>
+                                            <div className={`text-[11px] font-bold flex items-center gap-1 sm:justify-end mb-1 ${espera >= 30 ? 'text-red-600' : espera >= 15 ? 'text-amber-600' : 'text-muted-foreground'}`}>
                                                 <Hourglass className="w-3 h-3"/> Aguardando inspeção há {formatarDuracaoMin(espera)}
                                             </div>
                                         );
                                     })()}
-                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Finalizado na Montagem</div>
-                                    <div className="text-sm font-bold flex items-center gap-2 justify-start sm:justify-end text-slate-700 dark:text-slate-300 mt-1">
-                                        <Calendar className="w-4 h-4 text-slate-400"/> {new Date(moto.fim_montagem).toLocaleDateString()}
+                                    <div className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Finalizado na Montagem</div>
+                                    <div className="text-sm font-bold flex items-center gap-2 justify-start sm:justify-end text-foreground/90 mt-1">
+                                        <Calendar className="w-4 h-4 text-muted-foreground"/> {new Date(moto.fim_montagem).toLocaleDateString()}
                                         <span className="opacity-30">|</span>
-                                        <Clock className="w-4 h-4 text-slate-400"/> {new Date(moto.fim_montagem).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                        <Clock className="w-4 h-4 text-muted-foreground"/> {new Date(moto.fim_montagem).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                     </div>
                                 </div>
                             </div>
@@ -343,36 +339,36 @@ export default function QualidadePage() {
                                 {/* Coluna 1: Dados Visuais da Moto */}
                                 <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-6">
                                     <div className="space-y-1">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                             <PaintBucket className="w-3.5 h-3.5 text-slate-400"/> Carenagem
+                                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                             <PaintBucket className="w-3.5 h-3.5 text-muted-foreground"/> Carenagem
                                         </p>
-                                        <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                                        <div className="flex items-center gap-2 bg-muted/50 p-2.5 rounded-xl border border-border">
                                             <div className="w-4 h-4 rounded-full border border-slate-300 shadow-sm shrink-0" style={{backgroundColor: getHexColor(moto.cor)}}></div>
-                                            <span className="font-bold text-sm text-slate-700 dark:text-slate-200 capitalize">{moto.cor || 'N/A'}</span>
+                                            <span className="font-bold text-sm text-foreground capitalize">{moto.cor || 'N/A'}</span>
                                         </div>
                                     </div>
                                     <div className="space-y-1">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                             <Armchair className="w-3.5 h-3.5 text-slate-400"/> Banco
+                                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                             <Armchair className="w-3.5 h-3.5 text-muted-foreground"/> Banco
                                         </p>
-                                        <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                                            <span className="font-bold text-sm text-slate-700 dark:text-slate-200 capitalize">{moto.cor_banco || 'N/A'}</span>
+                                        <div className="bg-muted/50 p-2.5 rounded-xl border border-border">
+                                            <span className="font-bold text-sm text-foreground capitalize">{moto.cor_banco || 'N/A'}</span>
                                         </div>
                                     </div>
                                     <div className="space-y-1">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                             <User className="w-3.5 h-3.5 text-slate-400"/> Montador
+                                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                             <User className="w-3.5 h-3.5 text-muted-foreground"/> Montador
                                         </p>
-                                        <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 truncate">
-                                            <span className="font-bold text-sm text-slate-700 dark:text-slate-200">{moto.montador?.nome.split(' ')[0] || 'Desc.'}</span>
+                                        <div className="bg-muted/50 p-2.5 rounded-xl border border-border truncate">
+                                            <span className="font-bold text-sm text-foreground">{moto.montador?.nome.split(' ')[0] || 'Desc.'}</span>
                                         </div>
                                     </div>
                                     <div className="space-y-1">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                             <Timer className="w-3.5 h-3.5 text-slate-400"/> Tempo Montagem
+                                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                                             <Timer className="w-3.5 h-3.5 text-muted-foreground"/> Tempo Montagem
                                         </p>
-                                        <div className="bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
-                                            <span className="font-mono text-sm font-bold text-slate-700 dark:text-slate-200">
+                                        <div className="bg-muted/50 p-2.5 rounded-xl border border-border">
+                                            <span className="font-mono text-sm font-bold text-foreground">
                                                 {calcularDuracao(moto.inicio_montagem, moto.fim_montagem)}
                                             </span>
                                         </div>
@@ -380,13 +376,13 @@ export default function QualidadePage() {
                                 </div>
 
                                 {/* Coluna 2: Status e Histórico Corrigidos */}
-                                <div className="flex-1 xl:max-w-xs border-l border-slate-100 dark:border-slate-800 pl-0 xl:pl-6 flex flex-col justify-center gap-3">
+                                <div className="flex-1 xl:max-w-xs border-l border-border pl-0 xl:pl-6 flex flex-col justify-center gap-3">
                                     {!temRework && !temReparo ? (
                                         <div className="bg-green-500/5 text-green-800 dark:text-green-400 text-xs p-4 rounded-xl border border-green-500/10 flex items-start gap-3">
                                             <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5 text-green-600 dark:text-green-400"/>
                                             <div>
                                                 <p className="font-black uppercase tracking-wider text-green-700 dark:text-green-400">1ª Passagem</p>
-                                                <p className="text-slate-500 dark:text-slate-400 mt-0.5 leading-normal">Nenhum defeito ou retrabalho reportado até o momento.</p>
+                                                <p className="text-muted-foreground mt-0.5 leading-normal">Nenhum defeito ou retrabalho reportado até o momento.</p>
                                             </div>
                                         </div>
                                     ) : (
@@ -396,17 +392,17 @@ export default function QualidadePage() {
                                                     <RotateCcw className="w-5 h-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400"/>
                                                     <div>
                                                         <p className="font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">Linha: Retrabalho</p>
-                                                        <p className="text-slate-600 dark:text-slate-400 mt-0.5">Retornou <strong className="font-bold text-slate-800 dark:text-slate-200">{moto.rework_count}x</strong> para correções na linha.</p>
+                                                        <p className="text-muted-foreground mt-0.5">Retornou <strong className="font-bold text-foreground">{moto.rework_count}x</strong> para correções na linha.</p>
                                                     </div>
                                                 </div>
                                             )}
                                             {temReparo && (
-                                                <div className="bg-blue-500/5 text-blue-800 dark:text-blue-300 text-xs p-3.5 rounded-xl border border-blue-500/10 flex items-start gap-3">
-                                                    <Wrench className="w-5 h-5 shrink-0 mt-0.5 text-blue-600 dark:text-blue-400"/>
+                                                <div className="bg-info/10 text-info text-xs p-3.5 rounded-xl border border-info/20 flex items-start gap-3">
+                                                    <Wrench className="w-5 h-5 shrink-0 mt-0.5 text-info"/>
                                                     <div>
-                                                        <p className="font-black uppercase tracking-wider text-blue-700 dark:text-blue-400">Pátio: Oficina</p>
-                                                        <p className="text-slate-600 dark:text-slate-400 mt-0.5">Consertado por: <strong className="font-bold text-slate-800 dark:text-slate-200">{moto.tecnico_reparo}</strong></p>
-                                                        <p className="italic opacity-80 mt-1 pl-2 border-l-2 border-blue-200 dark:border-blue-800 leading-normal">
+                                                        <p className="font-black uppercase tracking-wider text-info">Pátio: Oficina</p>
+                                                        <p className="text-muted-foreground mt-0.5">Consertado por: <strong className="font-bold text-foreground">{moto.tecnico_reparo}</strong></p>
+                                                        <p className="italic opacity-80 mt-1 pl-2 border-l-2 border-info/30 leading-normal">
                                                             &quot;{moto.observacoes?.split('):').pop()?.trim() || 'Avaria solucionada.'}&quot;
                                                         </p>
                                                     </div>
@@ -442,7 +438,7 @@ export default function QualidadePage() {
 
         {/* MODAL DECISÃO QA */}
         <Dialog open={modalDecisaoOpen} onOpenChange={(o) => !salvandoDecisao && setModalDecisaoOpen(o)}>
-            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 max-w-md rounded-2xl shadow-2xl">
+            <DialogContent className="sm:max-w-lg rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className={`text-xl font-black flex items-center gap-2 ${acaoDecisao === 'retrabalho' ? 'text-amber-600' : 'text-red-600'}`}>
                         {acaoDecisao === 'retrabalho' ? <><RotateCcw className="w-5 h-5"/> Devolver para Montador</> : <><AlertTriangle className="w-5 h-5"/> Segregar para Pátio de Avarias</>}
@@ -457,24 +453,33 @@ export default function QualidadePage() {
                 <div className="space-y-4 py-3">
                     {acaoDecisao === 'avaria' && (
                         <div className="space-y-2">
-                            <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tipo de Falha</label>
+                            <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">Tipo de Falha</label>
                             <Select onValueChange={setTipoAvaria} value={tipoAvaria}>
-                                <SelectTrigger className="h-11 bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"><SelectValue placeholder="Selecione o tipo..."/></SelectTrigger>
+                                <SelectTrigger className="h-11 bg-muted/50 border-border"><SelectValue placeholder="Selecione o tipo..."/></SelectTrigger>
                                 <SelectContent>
                                      {TIPOS_AVARIA.map(t => <SelectItem key={t.valor} value={t.valor}>{t.emoji} {t.rotulo}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
                     )}
+                    {motoSelecionada && (
+                        <FotosMoto
+                            motoId={motoSelecionada.id}
+                            sku={motoSelecionada.sku}
+                            etapas={[acaoDecisao === 'avaria' ? 'avaria' : 'qualidade']}
+                            etapaEnvio={acaoDecisao === 'avaria' ? 'avaria' : 'qualidade'}
+                            titulo="Fotos do defeito (recomendado)"
+                        />
+                    )}
                     <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">Descrição do Defeito</label>
+                        <label className="text-xs font-black text-muted-foreground uppercase tracking-wider">Descrição do Defeito</label>
                         <Textarea 
                             placeholder={acaoDecisao === 'retrabalho' ? "O que o montador precisa corrigir?" : "Detalhe o problema mecânico/visual encontrado..."} 
                             value={observacaoQA} 
                             onChange={e => setObservacaoQA(e.target.value)} 
                             rows={3}
                             maxLength={500}
-                            className="bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                            className="bg-muted/50 border-border"
                         />
                     </div>
                 </div>
@@ -494,7 +499,7 @@ export default function QualidadePage() {
 
         {/* MODAL DE APROVAÇÃO QA (Substitui confirm) */}
         <Dialog open={!!motoAprovando} onOpenChange={(open) => !open && setMotoAprovando(null)}>
-            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 max-w-md rounded-2xl shadow-2xl">
+            <DialogContent className="sm:max-w-lg rounded-2xl shadow-2xl max-h-[92vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="text-xl font-black text-green-600 flex items-center gap-2">
                          <CheckCircle2 className="w-6 h-6"/> Confirmar Aprovação de Montagem
@@ -506,10 +511,17 @@ export default function QualidadePage() {
 
                 {motoAprovando && (
                     <div className="space-y-4 py-3">
-                        <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                            <h4 className="font-black text-lg text-slate-800 dark:text-white leading-tight">{motoAprovando.modelo}</h4>
-                            <p className="font-mono text-xs text-slate-500 mt-1 uppercase tracking-widest">{motoAprovando.sku}</p>
+                        <div className="bg-muted/50 p-4 rounded-xl border border-border">
+                            <h4 className="font-black text-lg text-foreground leading-tight">{motoAprovando.modelo}</h4>
+                            <p className="font-mono text-xs text-muted-foreground mt-1 uppercase tracking-widest">{motoAprovando.sku}</p>
                         </div>
+
+                        <FotosMoto
+                            motoId={motoAprovando.id}
+                            sku={motoAprovando.sku}
+                            etapaEnvio="qualidade"
+                            titulo="Fotos (opcional)"
+                        />
 
                         {/* Checklist de Validação */}
                         <label className="flex items-start gap-3 p-3.5 rounded-xl border border-green-500/10 bg-green-500/5 cursor-pointer select-none">
@@ -519,7 +531,7 @@ export default function QualidadePage() {
                                  onChange={(e) => setDeclaracaoQA(e.target.checked)}
                                  className="mt-1 w-4 h-4 rounded text-green-600 focus:ring-green-500 border-slate-300 dark:border-slate-700"
                             />
-                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-normal">
+                            <span className="text-xs font-semibold text-muted-foreground leading-normal">
                                  Declaro que inspecionei fisicamente o veículo e confirmo que a montagem atende a todos os critérios de qualidade estabelecidos.
                             </span>
                         </label>
@@ -534,7 +546,7 @@ export default function QualidadePage() {
                          className={`h-11 font-bold ${
                               declaracaoQA 
                                    ? 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-600/20' 
-                                   : 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-600'
+                                   : 'bg-slate-100 text-muted-foreground dark:bg-slate-800 dark:text-slate-600'
                          }`}
                     >
                          {aprovandoAcao ? "Aprovando..." : "Sim, Aprovar Montagem"}
@@ -544,6 +556,5 @@ export default function QualidadePage() {
         </Dialog>
 
       </div>
-    </RoleGuard>
   );
 }

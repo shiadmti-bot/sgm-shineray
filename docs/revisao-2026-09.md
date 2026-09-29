@@ -68,6 +68,11 @@ Legenda: ✅ corrigido nesta revisão · ⚠️ pendente (depende de banco/infra
 
 ## 6. Pendências recomendadas ⚠️
 
+> **Atualização (V2):** os itens 1 a 8 abaixo foram tratados na V2 — login pelo Supabase Auth, perfis de
+> acesso com RLS, remoção da página `/seed`, índice único de chassi, fim das pausas, Realtime, horário dos
+> logs pelo servidor e políticas da tabela de configurações. Ver [`implantacao-v2.md`](implantacao-v2.md)
+> e [`rbac.md`](rbac.md). O item 9 continua valendo para as telas herdadas da V1.
+
 Itens que dependem do banco de dados/infraestrutura (não estão neste repositório) e por isso não foram alterados:
 
 1. **Senhas em texto puro** na tabela `funcionarios`. Recomendado: migrar o login para o Supabase Auth (ou armazenar hash com `pgcrypto`/bcrypt e validar via função no banco).

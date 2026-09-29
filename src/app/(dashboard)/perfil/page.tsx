@@ -1,292 +1,265 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
-import {
-  Settings, LogOut, Shield, Key, Trophy, Target, AlertTriangle, Moon, Sun, Laptop, Loader2
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ROTULO_CARGO, getUsuarioLogado, useHidratado, useUsuarioLogado } from "@/lib/auth";
-import { efetuarLogout } from "@/lib/logout";
+import { AlertTriangle, ClipboardCheck, Clock, Key, Laptop, Loader2, LogOut, Moon, Settings, Shield, ShieldCheck, Sun, Target, Trophy } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { StatCard } from "@/components/sgm/StatCard";
+import { Iniciais } from "@/components/sgm/Iniciais";
+import { supabase } from "@/lib/supabase";
 import { registrarLog } from "@/lib/logger";
+import { DURACAO_MAXIMA_SESSAO_MS, inicioDaSessao, sair, useHidratado, useUsuarioLogado } from "@/lib/auth";
+import { GRUPOS_PERMISSAO, PERMISSOES, pode } from "@/lib/rbac/permissoes";
+import { pinValido, problemaSenha, senhaDoPin } from "@/lib/rbac/credenciais";
 import { inicioDoDiaISO, inicioDoMesISO } from "@/lib/datas";
 import { cn } from "@/lib/utils";
+
+interface Estatisticas { montagensHoje: number; montagensMes: number; retrabalhos: number; inspecoesHoje: number; inspecoesMes: number }
+
+const contar = (coluna: string, id: string, colunaData: string, desde: string) =>
+  supabase.from("motos").select("*", { count: "exact", head: true }).eq(coluna, id).gte(colunaData, desde);
 
 export default function PerfilPage() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const hidratado = useHidratado();
-  const user = useUsuarioLogado();
-  const ehMontador = user?.cargo === 'montador';
-  const [loading, setLoading] = useState(true);
+  const usuario = useUsuarioLogado();
+  const usaPin = usuario?.perfil?.acesso_pin === true;
+  const monta = pode(usuario, "montagem.executar");
+  const inspeciona = pode(usuario, "qualidade.inspecionar");
+  const [stats, setStats] = useState<Estatisticas | null>(null);
 
-  // KPIs
-  const [stats, setStats] = useState({
-      producaoHoje: 0,
-      totalMes: 0,
-      retrabalhos: 0
-  });
+  const [dialogo, setDialogo] = useState(false);
+  const [atual, setAtual] = useState("");
+  const [nova, setNova] = useState("");
+  const [confirmacao, setConfirmacao] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
-  // Modal Senha
-  const [modalSenhaOpen, setModalSenhaOpen] = useState(false);
-  const [senhaAtual, setSenhaAtual] = useState("");
-  const [novaSenha, setNovaSenha] = useState("");
-  const [confirmarSenha, setConfirmarSenha] = useState("");
-  const [salvandoSenha, setSalvandoSenha] = useState(false);
-
+  const usuarioId = usuario?.id;
   useEffect(() => {
-    if (hidratado && !user) router.push('/login');
-  }, [hidratado, user, router]);
-
-  useEffect(() => {
-    const usuario = getUsuarioLogado();
-    if (!usuario) return;
+    if (!usuarioId) return;
     let ativo = true;
+    const hoje = inicioDoDiaISO();
+    const mes = inicioDoMesISO();
+    Promise.all([
+      contar("montador_id", usuarioId, "fim_montagem", hoje),
+      contar("montador_id", usuarioId, "fim_montagem", mes),
+      supabase.from("motos").select("rework_count").eq("montador_id", usuarioId).gt("rework_count", 0),
+      contar("supervisor_id", usuarioId, "updated_at", hoje),
+      contar("supervisor_id", usuarioId, "updated_at", mes),
+    ]).then(([h, m, r, ih, im]) => {
+      if (!ativo) return;
+      setStats({
+        montagensHoje: h.count || 0,
+        montagensMes: m.count || 0,
+        retrabalhos: (r.data || []).reduce((s: number, x: { rework_count: number | null }) => s + (x.rework_count || 0), 0),
+        inspecoesHoje: ih.count || 0,
+        inspecoesMes: im.count || 0,
+      });
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [usuarioId]);
 
-    async function carregarEstatisticas(id: string, montador: boolean) {
-        const hoje = inicioDoDiaISO();
-        const inicioMes = inicioDoMesISO();
-        // Montador: montagens FINALIZADAS por ele. Demais cargos: motos inspecionadas por ele.
-        const colunaResponsavel = montador ? 'montador_id' : 'supervisor_id';
-        const colunaData = montador ? 'fim_montagem' : 'updated_at';
+  if (!usuario) return null;
 
-        const [{ count: countHoje }, { count: countMes }, { data: motosRetrabalho }] = await Promise.all([
-            supabase.from('motos').select('*', { count: 'exact', head: true }).eq(colunaResponsavel, id).gte(colunaData, hoje),
-            supabase.from('motos').select('*', { count: 'exact', head: true }).eq(colunaResponsavel, id).gte(colunaData, inicioMes),
-            // Retrabalhos (Acumulado Histórico)
-            supabase.from('motos').select('rework_count').eq('montador_id', id).gt('rework_count', 0),
-        ]);
+  const inicio = hidratado ? inicioDaSessao() : null;
+  const fimSessao = inicio ? new Date(inicio + DURACAO_MAXIMA_SESSAO_MS) : null;
 
-        const totalRetrabalhos = motosRetrabalho
-            ? motosRetrabalho.reduce((acc: number, curr: { rework_count: number | null }) => acc + (curr.rework_count || 0), 0)
-            : 0;
+  const abrirTroca = () => {
+    setAtual("");
+    setNova("");
+    setConfirmacao("");
+    setDialogo(true);
+  };
 
-        if (!ativo) return;
-        setStats({
-            producaoHoje: countHoje || 0,
-            totalMes: countMes || 0,
-            retrabalhos: totalRetrabalhos
-        });
-        setLoading(false);
+  const trocar = async () => {
+    if (!atual || !nova) return toast.warning("Preencha os campos.");
+    if (usaPin && !pinValido(nova)) return toast.warning("O PIN deve ter exatamente 4 números.");
+    if (!usaPin) {
+      const problema = problemaSenha(nova);
+      if (problema) return toast.warning(problema);
     }
+    if (nova !== confirmacao) return toast.warning("A confirmação não confere.");
+    if (nova === atual) return toast.warning("A nova credencial deve ser diferente da atual.");
 
-    carregarEstatisticas(usuario.id, usuario.cargo === 'montador');
-    return () => { ativo = false; };
-  }, []);
-
-  const handleLogout = async () => {
-      await efetuarLogout();
-      toast.info("Sessão encerrada.");
-      router.push('/login');
-  };
-
-  const abrirTrocaSenha = () => {
-      setSenhaAtual(""); setNovaSenha(""); setConfirmarSenha("");
-      setModalSenhaOpen(true);
-  };
-
-  const handleTrocarSenha = async () => {
-      if (!user) return;
-      if (!senhaAtual || !novaSenha) return toast.warning("Preencha os campos.");
-      // O login do montador aceita exatamente 4 números; senhas curtas deixam contas vulneráveis.
-      if (ehMontador && !/^\d{4}$/.test(novaSenha)) return toast.warning("O PIN deve ter exatamente 4 números.");
-      if (!ehMontador && novaSenha.length < 6) return toast.warning("A nova senha deve ter pelo menos 6 caracteres.");
-      if (novaSenha !== confirmarSenha) return toast.warning("A confirmação não confere com a nova senha.");
-      if (novaSenha === senhaAtual) return toast.warning("A nova senha deve ser diferente da atual.");
-
-      setSalvandoSenha(true);
-      try {
-        // 1. Valida senha antiga
-        const { data: validacao } = await supabase
-            .from('funcionarios')
-            .select('id')
-            .eq('id', user.id)
-            .eq('senha', senhaAtual)
-            .maybeSingle();
-
-        if (!validacao) {
-            toast.error("A senha atual está incorreta.");
-            return;
-        }
-
-        // 2. Atualiza
-        const { error } = await supabase
-            .from('funcionarios')
-            .update({ senha: novaSenha })
-            .eq('id', user.id);
-
-        if (error) {
-            toast.error("Erro ao atualizar.");
-        } else {
-            await registrarLog('SENHA_ALTERADA', user.nome, { id: user.id });
-            toast.success(ehMontador ? "PIN alterado com sucesso!" : "Senha alterada com sucesso!");
-            setModalSenhaOpen(false);
-        }
-      } finally {
-        setSalvandoSenha(false);
+    setSalvando(true);
+    try {
+      const { data: sessao } = await supabase.auth.getSession();
+      const email = sessao.session?.user.email;
+      if (!email) {
+        toast.error("Sessão expirada. Entre novamente.");
+        return;
       }
+      // Confere a credencial atual (protege tablets deixados logados)
+      const { error: erroAtual } = await supabase.auth.signInWithPassword({ email, password: usaPin ? senhaDoPin(atual) : atual });
+      if (erroAtual) {
+        toast.error(usaPin ? "PIN atual incorreto." : "Senha atual incorreta.");
+        return;
+      }
+      const { error } = await supabase.auth.updateUser({ password: usaPin ? senhaDoPin(nova) : nova, data: { trocar_senha: false } });
+      if (error) {
+        toast.error(`Não foi possível alterar: ${error.message}`);
+        return;
+      }
+      await registrarLog("SENHA_ALTERADA", "Sistema", { tipo: usaPin ? "PIN" : "senha", motivo: "troca_pelo_usuario" });
+      toast.success(usaPin ? "PIN alterado!" : "Senha alterada!");
+      setDialogo(false);
+    } finally {
+      setSalvando(false);
+    }
   };
-
-  if (!hidratado || !user || loading) return <div className="p-8"><Skeleton className="h-40 w-full mb-4" /><Skeleton className="h-64 w-full" /></div>;
 
   const temas = [
-      { valor: 'light', rotulo: 'Claro', icone: Sun },
-      { valor: 'dark', rotulo: 'Escuro', icone: Moon },
-      { valor: 'system', rotulo: 'Automático', icone: Laptop },
+    { valor: "light", rotulo: "Claro", icone: Sun },
+    { valor: "dark", rotulo: "Escuro", icone: Moon },
+    { valor: "system", rotulo: "Automático", icone: Laptop },
   ];
 
   return (
-    <div className="space-y-6 animate-in fade-in pb-20">
+    <div className="space-y-6 pb-16">
+      <Card className="py-6">
+        <CardContent className="flex flex-col items-center gap-5 px-6 md:flex-row">
+          <Iniciais nome={usuario.nome} className="size-20 text-2xl" />
+          <div className="flex-1 text-center md:text-left">
+            <h1 className="text-2xl font-bold tracking-tight">{usuario.nome}</h1>
+            <div className="mt-1 flex flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground md:justify-start">
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">{usuario.perfil?.nome ?? "Sem perfil"}</span>
+              {usaPin && <span className="rounded-full bg-info/10 px-2.5 py-0.5 text-xs font-semibold text-info">Acesso por PIN</span>}
+              <span className="font-mono">{usuario.matricula ? `Matrícula ${usuario.matricula}` : usuario.email}</span>
+            </div>
+            {fimSessao && (
+              <p className="mt-2 flex items-center justify-center gap-1 text-xs text-muted-foreground md:justify-start">
+                <Clock className="size-3.5" /> Sessão neste dispositivo encerra automaticamente às {fimSessao.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                {fimSessao.toDateString() !== new Date().toDateString() ? ` de ${fimSessao.toLocaleDateString("pt-BR")}` : ""}.
+              </p>
+            )}
+          </div>
+          <Button variant="outline" onClick={async () => { await sair(); router.replace("/login?motivo=saiu"); }} className="w-full md:w-auto">
+            <LogOut /> Sair
+          </Button>
+        </CardContent>
+      </Card>
 
-      {/* 1. CARTÃO DE IDENTIDADE */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row items-center gap-6">
-         <Avatar className="w-24 h-24 border-4 border-blue-100 dark:border-blue-900">
-            <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.nome)}`} />
-            <AvatarFallback>{user.nome.substring(0, 2).toUpperCase()}</AvatarFallback>
-         </Avatar>
-
-         <div className="text-center md:text-left flex-1">
-             <h1 className="text-2xl font-black text-slate-900 dark:text-white">{user.nome}</h1>
-             <div className="flex flex-wrap items-center justify-center md:justify-start gap-2 mt-1 text-slate-500">
-                 <Badge variant="secondary" className="uppercase font-bold tracking-wider bg-slate-100 dark:bg-slate-800">
-                    {ROTULO_CARGO[user.cargo] || user.cargo}
-                 </Badge>
-                 <span>•</span>
-                 <span className="font-mono">{user.matricula ? `Matrícula: ${user.matricula}` : user.email}</span>
-             </div>
-         </div>
-
-         <Button variant="destructive" onClick={handleLogout} className="w-full md:w-auto">
-            <LogOut className="w-4 h-4 mr-2" /> Sair
-         </Button>
-      </div>
-
-      {/* 2. ESTATÍSTICAS (KPIs) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/50">
-              <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                      <Target className="w-4 h-4" /> {ehMontador ? 'Produção Hoje' : 'Inspeções Hoje'}
-                  </CardTitle>
-              </CardHeader>
-              <CardContent>
-                  <div className="text-3xl font-black text-slate-900 dark:text-white">{stats.producaoHoje}</div>
-                  <p className="text-xs text-slate-500">{ehMontador ? 'Montagens finalizadas hoje' : 'Motos em que você registrou decisão hoje'}</p>
-              </CardContent>
-          </Card>
-
-          <Card className="bg-purple-50 dark:bg-purple-900/20 border-purple-100 dark:border-purple-900/50">
-              <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-purple-600 dark:text-purple-400 flex items-center gap-2">
-                      <Trophy className="w-4 h-4" /> Acumulado Mês
-                  </CardTitle>
-              </CardHeader>
-              <CardContent>
-                  <div className="text-3xl font-black text-slate-900 dark:text-white">{stats.totalMes}</div>
-                  <p className="text-xs text-slate-500">Total do mês corrente</p>
-              </CardContent>
-          </Card>
-
-          {ehMontador && (
-              <Card className="bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/50">
-                  <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-amber-600 dark:text-amber-400 flex items-center gap-2">
-                          <AlertTriangle className="w-4 h-4" /> Índice de Retrabalho
-                      </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                      <div className="text-3xl font-black text-slate-900 dark:text-white">{stats.retrabalhos}</div>
-                      <p className="text-xs text-slate-500">Devoluções da Qualidade</p>
-                  </CardContent>
-              </Card>
+      {(monta || inspeciona) && (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {monta && (
+            <>
+              <StatCard rotulo="Montagens hoje" valor={stats?.montagensHoje ?? 0} icone={Target} tom="info" carregando={!stats} />
+              <StatCard rotulo="Montagens no mês" valor={stats?.montagensMes ?? 0} icone={Trophy} tom="sucesso" carregando={!stats} />
+              <StatCard rotulo="Retrabalhos (total)" valor={stats?.retrabalhos ?? 0} icone={AlertTriangle} tom={(stats?.retrabalhos ?? 0) > 0 ? "alerta" : "neutro"} carregando={!stats} dica="Devoluções da qualidade" />
+            </>
           )}
-      </div>
+          {inspeciona && (
+            <>
+              <StatCard rotulo="Inspeções hoje" valor={stats?.inspecoesHoje ?? 0} icone={ClipboardCheck} tom="primario" carregando={!stats} />
+              {!monta && <StatCard rotulo="Inspeções no mês" valor={stats?.inspecoesMes ?? 0} icone={Trophy} tom="sucesso" carregando={!stats} />}
+            </>
+          )}
+        </div>
+      )}
 
-      {/* 3. CONFIGURAÇÕES E SEGURANÇA */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-          {/* Aparência */}
-          <Card>
-              <CardHeader>
-                  <CardTitle className="flex items-center gap-2"><Settings className="w-5 h-5"/> Preferências</CardTitle>
-                  <CardDescription>Personalize sua experiência de uso.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-3 gap-3">
-                  {temas.map(({ valor, rotulo, icone: Icone }) => (
-                      <button
-                        key={valor}
-                        type="button"
-                        onClick={() => setTheme(valor)}
-                        className={cn(
-                          "flex flex-col items-center gap-2 p-4 rounded-xl border-2 text-sm font-medium transition-colors",
-                          theme === valor ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300" : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
-                        )}
-                      >
-                        <Icone className="w-5 h-5" /> {rotulo}
-                      </button>
-                  ))}
-              </CardContent>
-          </Card>
-
-          {/* Segurança */}
-          <Card className="border-red-100 dark:border-red-900/30">
-              <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-500"><Shield className="w-5 h-5"/> Segurança</CardTitle>
-                  <CardDescription>Gerencie suas credenciais de acesso.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                  <div className="flex items-center justify-between gap-4 p-4 bg-red-50 dark:bg-red-900/10 rounded-lg">
-                      <div>
-                          <p className="font-bold text-slate-900 dark:text-white">{ehMontador ? 'PIN de Acesso' : 'Senha de Acesso'}</p>
-                          <p className="text-xs text-slate-500">{ehMontador ? '4 números, usado no login da linha.' : 'Mínimo de 6 caracteres.'}</p>
-                      </div>
-                      <Button variant="outline" onClick={abrirTrocaSenha}>
-                          <Key className="w-4 h-4 mr-2" /> Alterar
-                      </Button>
-                  </div>
-              </CardContent>
-          </Card>
-      </div>
-
-      {/* MODAL DE TROCA DE SENHA */}
-      <Dialog open={modalSenhaOpen} onOpenChange={(o) => !salvandoSenha && setModalSenhaOpen(o)}>
-          <DialogContent>
-              <DialogHeader>
-                  <DialogTitle>{ehMontador ? 'Alterar PIN' : 'Alterar Senha'}</DialogTitle>
-                  <DialogDescription>Digite sua credencial atual para confirmar a mudança.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                  <div className="space-y-2">
-                      <label className="text-sm font-bold">{ehMontador ? 'PIN atual' : 'Senha atual'}</label>
-                      <Input type="password" value={senhaAtual} onChange={e => setSenhaAtual(e.target.value)} inputMode={ehMontador ? "numeric" : undefined} autoComplete="current-password" />
-                  </div>
-                  <div className="space-y-2">
-                      <label className="text-sm font-bold">{ehMontador ? 'Novo PIN (4 números)' : 'Nova senha (mín. 6 caracteres)'}</label>
-                      <Input type="password" value={novaSenha} onChange={e => setNovaSenha(ehMontador ? e.target.value.replace(/\D/g, '').slice(0, 4) : e.target.value)} inputMode={ehMontador ? "numeric" : undefined} autoComplete="new-password" />
-                  </div>
-                  <div className="space-y-2">
-                      <label className="text-sm font-bold">Confirmar</label>
-                      <Input type="password" value={confirmarSenha} onChange={e => setConfirmarSenha(ehMontador ? e.target.value.replace(/\D/g, '').slice(0, 4) : e.target.value)} inputMode={ehMontador ? "numeric" : undefined} autoComplete="new-password" />
-                  </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Shield className="size-5" /> Segurança</CardTitle>
+            <CardDescription>Sua credencial de acesso ao SGM.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
+              <div>
+                <p className="font-semibold">{usaPin ? "PIN de acesso" : "Senha de acesso"}</p>
+                <p className="text-xs text-muted-foreground">{usaPin ? "4 números, usados no login da linha." : "Pelo menos 6 caracteres."}</p>
               </div>
-              <DialogFooter>
-                  <Button variant="ghost" onClick={() => setModalSenhaOpen(false)} disabled={salvandoSenha}>Cancelar</Button>
-                  <Button onClick={handleTrocarSenha} disabled={salvandoSenha}>
-                    {salvandoSenha && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Salvar
-                  </Button>
-              </DialogFooter>
-          </DialogContent>
-      </Dialog>
+              <Button variant="outline" onClick={abrirTroca}><Key /> Alterar</Button>
+            </div>
+          </CardContent>
+        </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Settings className="size-5" /> Aparência</CardTitle>
+            <CardDescription>Tema deste dispositivo.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-3 gap-3">
+            {temas.map(({ valor, rotulo, icone: Icone }) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => setTheme(valor)}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-sm font-medium transition-colors",
+                  hidratado && theme === valor ? "border-primary bg-primary/5 text-primary" : "hover:bg-accent",
+                )}
+              >
+                <Icone className="size-5" /> {rotulo}
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5" /> O que o seu perfil permite</CardTitle>
+          <CardDescription>
+            {usuario.master ? "Perfil Master: acesso total ao sistema." : "Definido pela gestão em Perfis de acesso. Dúvidas? Fale com o gestor."}
+          </CardDescription>
+        </CardHeader>
+        {!usuario.master && (
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {GRUPOS_PERMISSAO.map((grupo) => {
+              const minhas = PERMISSOES.filter((p) => p.grupo === grupo && usuario.permissoes.includes(p.chave));
+              if (minhas.length === 0) return null;
+              return (
+                <div key={grupo} className="space-y-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{grupo}</p>
+                  {minhas.map((p) => <p key={p.chave} className="text-sm">• {p.rotulo}</p>)}
+                </div>
+              );
+            })}
+          </CardContent>
+        )}
+      </Card>
+
+      <Dialog open={dialogo} onOpenChange={(o) => !salvando && setDialogo(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{usaPin ? "Alterar PIN" : "Alterar senha"}</DialogTitle>
+            <DialogDescription>Confirme a credencial atual para continuar.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {([
+              { id: "atual", rotulo: usaPin ? "PIN atual" : "Senha atual", valor: atual, definir: setAtual, auto: "current-password" },
+              { id: "nova", rotulo: usaPin ? "Novo PIN (4 números)" : "Nova senha (mín. 6 caracteres)", valor: nova, definir: setNova, auto: "new-password" },
+              { id: "confirmacao", rotulo: "Confirmar", valor: confirmacao, definir: setConfirmacao, auto: "new-password" },
+            ] as const).map((c) => (
+              <div key={c.id} className="space-y-2">
+                <Label htmlFor={c.id}>{c.rotulo}</Label>
+                <Input
+                  id={c.id}
+                  type="password"
+                  value={c.valor}
+                  autoComplete={c.auto}
+                  inputMode={usaPin ? "numeric" : undefined}
+                  onChange={(e) => c.definir(usaPin ? e.target.value.replace(/\D/g, "").slice(0, 4) : e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDialogo(false)} disabled={salvando}>Cancelar</Button>
+            <Button onClick={trocar} disabled={salvando}>{salvando && <Loader2 className="animate-spin" />} Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

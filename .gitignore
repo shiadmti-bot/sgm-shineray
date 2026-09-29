@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -49,3 +50,7 @@ next-env.d.ts
 /public/worker-*.js.map
 /public/swe-worker-*.js
 /public/fallback-*.js
+
+# backups
+/backups/
+

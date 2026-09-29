@@ -40,9 +40,9 @@ const clonar = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 function Campo({ rotulo, dica, children, className }: { rotulo: string; dica?: string; children: React.ReactNode; className?: string }) {
   return (
     <label className={cn("block space-y-1 min-w-0", className)}>
-      <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{rotulo}</span>
+      <span className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{rotulo}</span>
       {children}
-      {dica && <span className="block text-[10px] leading-snug text-slate-400">{dica}</span>}
+      {dica && <span className="block text-[10px] leading-snug text-muted-foreground">{dica}</span>}
     </label>
   );
 }
@@ -67,9 +67,9 @@ function NumeroInput({ valor, onChange, min, max, step = 1, sufixo }: { valor: n
           const n = parseFloat(e.target.value.replace(",", "."));
           if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n)));
         }}
-        className={cn("h-9 bg-white dark:bg-slate-950", sufixo && "pr-10")}
+        className={cn("h-9 bg-card", sufixo && "pr-10")}
       />
-      {sufixo && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">{sufixo}</span>}
+      {sufixo && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{sufixo}</span>}
     </div>
   );
 }
@@ -82,7 +82,7 @@ function Selecao<T extends string | number>({ valor, onChange, opcoes }: { valor
         const escolhida = opcoes.find((o) => String(o.valor) === e.target.value);
         if (escolhida) onChange(escolhida.valor);
       }}
-      className="h-9 w-full rounded-md border border-input bg-white dark:bg-slate-950 px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      className="h-9 w-full rounded-md border border-input bg-card px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
     >
       {opcoes.map((o) => (
         <option key={String(o.valor)} value={String(o.valor)}>{o.rotulo}</option>
@@ -95,7 +95,7 @@ function Alternar({ rotulo, marcado, onChange }: { rotulo: string; marcado: bool
   return (
     <label className="flex items-center gap-2 text-sm cursor-pointer select-none py-1">
       <Checkbox checked={marcado} onCheckedChange={(v) => onChange(v === true)} />
-      <span className="text-slate-700 dark:text-slate-300">{rotulo}</span>
+      <span className="text-foreground/90">{rotulo}</span>
     </label>
   );
 }
@@ -195,7 +195,7 @@ function CamposEspecificos({ bloco, alterar }: { bloco: BlocoEtiqueta; alterar: 
     case "imagem":
       return <EditorImagem bloco={bloco} set={set} />;
     case "espaco":
-      return <p className="text-xs text-slate-500">Bloco vazio para separar conteúdos. Ajuste apenas a altura.</p>;
+      return <p className="text-xs text-muted-foreground">Bloco vazio para separar conteúdos. Ajuste apenas a altura.</p>;
   }
 }
 
@@ -471,7 +471,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
   return (
     <div className="space-y-4">
       {/* Barra de modelos */}
-      <Card className="py-0 gap-0 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+      <Card className="py-0 gap-0 bg-card border-border">
         <CardContent className="p-4 flex flex-col lg:flex-row gap-3 lg:items-end">
           <Campo rotulo="Modelo em edição" className="lg:w-80">
             <Selecao
@@ -484,7 +484,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
             <select
               value=""
               onChange={(e) => { if (e.target.value) novoModelo(e.target.value); }}
-              className="h-9 rounded-md border border-input bg-white dark:bg-slate-950 px-2 text-sm"
+              className="h-9 rounded-md border border-input bg-card px-2 text-sm"
               aria-label="Criar modelo"
             >
               <option value="">+ Novo modelo…</option>
@@ -499,7 +499,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
             <Button type="button" variant="outline" size="sm" className="h-9" onClick={exportar}><Download className="w-4 h-4 mr-1" /> Exportar</Button>
             <input ref={inputImportar} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importar(e.target.files?.[0]); e.target.value = ""; }} />
             <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => inputImportar.current?.click()}><Upload className="w-4 h-4 mr-1" /> Importar</Button>
-            <Button type="button" variant="ghost" size="sm" className="h-9 text-slate-500" onClick={() => setDialogo("restaurar")}><RotateCcw className="w-4 h-4 mr-1" /> Restaurar fábrica</Button>
+            <Button type="button" variant="ghost" size="sm" className="h-9 text-muted-foreground" onClick={() => setDialogo("restaurar")}><RotateCcw className="w-4 h-4 mr-1" /> Restaurar fábrica</Button>
             <Button type="button" variant="ghost" size="sm" className="h-9 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30" onClick={() => setDialogo("excluir")} disabled={rascunho.modelos.length <= 1}>
               <Trash2 className="w-4 h-4 mr-1" /> Excluir
             </Button>
@@ -510,7 +510,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(320px,440px)] gap-4 items-start">
         {/* --- Coluna de configurações --- */}
         <div className="space-y-4 min-w-0">
-          <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <Card className="bg-card border-border">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Página</CardTitle>
               <CardDescription>Tamanho do papel, bordas, fonte e calibração da impressora.</CardDescription>
@@ -526,7 +526,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
                     const t = TAMANHOS_PRESET.find((p) => p.rotulo === e.target.value);
                     if (t) alterarModelo({ largura: t.largura, altura: t.altura });
                   }}
-                  className="h-9 w-full rounded-md border border-input bg-white dark:bg-slate-950 px-2 text-sm"
+                  className="h-9 w-full rounded-md border border-input bg-card px-2 text-sm"
                 >
                   <option value="">Personalizado</option>
                   {TAMANHOS_PRESET.map((t) => <option key={t.rotulo} value={t.rotulo}>{t.rotulo}</option>)}
@@ -546,7 +546,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
             </CardContent>
           </Card>
 
-          <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <Card className="bg-card border-border">
             <CardHeader className="pb-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -569,7 +569,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
                 </p>
               )}
               {excesso < -2 && !temExpansivel && (
-                <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-2">
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-2">
                   <Info className="w-3.5 h-3.5 shrink-0" /> Sobram {Math.round(-excesso * 10) / 10} mm no fim. Marque “Ocupar espaço restante” em um bloco para aproveitá-los.
                 </p>
               )}
@@ -578,19 +578,19 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
               {modelo.blocos.map((bloco, idx) => {
                 const aberto = blocoAberto === bloco.id;
                 return (
-                  <div key={bloco.id} className={cn("rounded-xl border transition-colors", aberto ? "border-blue-300 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-950/10" : "border-slate-200 dark:border-slate-800", !bloco.visivel && "opacity-60")}>
+                  <div key={bloco.id} className={cn("rounded-xl border transition-colors", aberto ? "border-blue-300 dark:border-blue-800 bg-info/10" : "border-border", !bloco.visivel && "opacity-60")}>
                     <div className="flex items-center gap-1 p-2">
                       <div className="flex flex-col">
-                        <button type="button" className="p-0.5 text-slate-400 hover:text-slate-700 disabled:opacity-30" onClick={() => moverBloco(idx, -1)} disabled={idx === 0} aria-label="Subir bloco"><ArrowUp className="w-3.5 h-3.5" /></button>
-                        <button type="button" className="p-0.5 text-slate-400 hover:text-slate-700 disabled:opacity-30" onClick={() => moverBloco(idx, 1)} disabled={idx === modelo.blocos.length - 1} aria-label="Descer bloco"><ArrowDown className="w-3.5 h-3.5" /></button>
+                        <button type="button" className="p-0.5 text-muted-foreground hover:text-slate-700 disabled:opacity-30" onClick={() => moverBloco(idx, -1)} disabled={idx === 0} aria-label="Subir bloco"><ArrowUp className="w-3.5 h-3.5" /></button>
+                        <button type="button" className="p-0.5 text-muted-foreground hover:text-slate-700 disabled:opacity-30" onClick={() => moverBloco(idx, 1)} disabled={idx === modelo.blocos.length - 1} aria-label="Descer bloco"><ArrowDown className="w-3.5 h-3.5" /></button>
                       </div>
-                      <button type="button" className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => alterarBloco(bloco.id, { visivel: !bloco.visivel })} aria-label={bloco.visivel ? "Ocultar bloco" : "Mostrar bloco"} title={bloco.visivel ? "Ocultar" : "Mostrar"}>
+                      <button type="button" className="p-1.5 rounded-md text-muted-foreground hover:bg-accent" onClick={() => alterarBloco(bloco.id, { visivel: !bloco.visivel })} aria-label={bloco.visivel ? "Ocultar bloco" : "Mostrar bloco"} title={bloco.visivel ? "Ocultar" : "Mostrar"}>
                         {bloco.visivel ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                       </button>
                       <button type="button" className="flex-1 min-w-0 flex items-center gap-2 text-left px-1" onClick={() => setBlocoAberto(aberto ? null : bloco.id)}>
-                        {aberto ? <ChevronDown className="w-4 h-4 shrink-0 text-slate-400" /> : <ChevronRight className="w-4 h-4 shrink-0 text-slate-400" />}
-                        <span className="text-sm font-bold text-slate-800 dark:text-slate-100 shrink-0">{ROTULO_TIPO_BLOCO[bloco.tipo]}</span>
-                        <span className="text-xs text-slate-400 truncate">{resumoBloco(bloco)}</span>
+                        {aberto ? <ChevronDown className="w-4 h-4 shrink-0 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 shrink-0 text-muted-foreground" />}
+                        <span className="text-sm font-bold text-foreground shrink-0">{ROTULO_TIPO_BLOCO[bloco.tipo]}</span>
+                        <span className="text-xs text-muted-foreground truncate">{resumoBloco(bloco)}</span>
                       </button>
                       <div className="w-24 shrink-0">
                         <NumeroInput valor={bloco.altura} onChange={(v) => alterarBloco(bloco.id, { altura: v })} min={1} max={400} sufixo="mm" />
@@ -603,9 +603,9 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
                       </Button>
                     </div>
                     {aberto && (
-                      <div className="border-t border-slate-200 dark:border-slate-800 p-3 space-y-4">
+                      <div className="border-t border-border p-3 space-y-4">
                         <CamposEspecificos bloco={bloco} alterar={(p) => alterarBloco(bloco.id, p)} />
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-dashed border-slate-200 dark:border-slate-800">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-dashed border-border">
                           <Campo rotulo="Alinhamento">
                             <Selecao valor={bloco.alinhamento} onChange={(v) => alterarBloco(bloco.id, { alinhamento: v })} opcoes={[{ valor: "left", rotulo: "Esquerda" }, { valor: "center", rotulo: "Centro" }, { valor: "right", rotulo: "Direita" }]} />
                           </Campo>
@@ -627,7 +627,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
               <select
                 value=""
                 onChange={(e) => { if (e.target.value) adicionarBloco(e.target.value as TipoBloco); }}
-                className="h-10 w-full rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-transparent px-3 text-sm font-medium text-slate-600 dark:text-slate-300 hover:border-blue-400 cursor-pointer"
+                className="h-10 w-full rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-700 bg-transparent px-3 text-sm font-medium text-muted-foreground hover:border-blue-400 cursor-pointer"
                 aria-label="Adicionar bloco"
               >
                 <option value="">+ Adicionar bloco…</option>
@@ -636,16 +636,16 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
             </CardContent>
           </Card>
 
-          <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+          <Card className="bg-card border-border">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Variáveis disponíveis</CardTitle>
               <CardDescription>Use em títulos, textos, campos e no conteúdo dos códigos. Clique para copiar.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
               {VARIAVEIS_ETIQUETA.map((v) => (
-                <button key={v.chave} type="button" onClick={() => copiarVariavel(v.chave)} className="text-left rounded-lg border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors">
-                  <span className="block font-mono text-xs font-bold text-blue-700 dark:text-blue-400">{`{${v.chave}}`}</span>
-                  <span className="block text-[10px] text-slate-500">{v.descricao}</span>
+                <button key={v.chave} type="button" onClick={() => copiarVariavel(v.chave)} className="text-left rounded-lg border border-border px-2.5 py-1.5 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors">
+                  <span className="block font-mono text-xs font-bold text-info">{`{${v.chave}}`}</span>
+                  <span className="block text-[10px] text-muted-foreground">{v.descricao}</span>
                 </button>
               ))}
             </CardContent>
@@ -654,7 +654,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
 
         {/* --- Coluna de pré-visualização --- */}
         <div className="xl:sticky xl:top-24 space-y-3">
-          <Card className="pb-0 gap-4 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 overflow-hidden">
+          <Card className="pb-0 gap-4 bg-card border-border overflow-hidden">
             <CardHeader className="pb-0">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-base">Pré-visualização</CardTitle>
@@ -663,7 +663,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
               <select
                 value={amostraIdx}
                 onChange={(e) => setAmostraIdx(Number(e.target.value))}
-                className="mt-2 h-9 w-full rounded-md border border-input bg-white dark:bg-slate-950 px-2 text-sm"
+                className="mt-2 h-9 w-full rounded-md border border-input bg-card px-2 text-sm"
                 aria-label="Dados usados na pré-visualização"
               >
                 <option value={-1}>Dados de exemplo</option>
@@ -677,7 +677,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
           <Button type="button" variant="outline" className="w-full" onClick={imprimirTeste}>
             <Printer className="w-4 h-4 mr-2" /> Imprimir teste
           </Button>
-          <p className="text-[11px] text-slate-500 leading-relaxed px-1">
+          <p className="text-[11px] text-muted-foreground leading-relaxed px-1">
             No driver da impressora, use papel de <strong>{modelo.largura} × {modelo.altura} mm</strong>, orientação retrato e margens zero.
             Se a impressão sair deslocada, corrija com o ajuste horizontal/vertical.
           </p>
@@ -686,9 +686,9 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
 
       {/* Barra de salvar */}
       <div className="sticky bottom-4 z-30">
-        <Card className={cn("py-0 gap-0 border-2 shadow-xl transition-colors", alterado ? "border-blue-400 bg-white dark:bg-slate-900" : "border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90")}>
+        <Card className={cn("py-0 gap-0 border-2 shadow-xl transition-colors", alterado ? "border-blue-400 bg-card" : "border-border bg-card/90")}>
           <CardContent className="p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {origem === "servidor" ? <Cloud className="w-4 h-4 text-green-600" /> : <HardDrive className="w-4 h-4 text-amber-600" />}
               <span>
                 {origem === "servidor" && "Layout compartilhado entre todas as estações."}
@@ -700,7 +700,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
               <Button type="button" variant="ghost" disabled={!alterado || salvando} onClick={() => setRascunho(clonar(config))} className="flex-1 sm:flex-none">
                 Descartar
               </Button>
-              <Button type="button" disabled={!alterado || salvando} onClick={salvar} className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white font-bold">
+              <Button type="button" disabled={!alterado || salvando} onClick={salvar} className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 text-white font-bold">
                 {salvando ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                 {alterado ? "Salvar alterações" : "Tudo salvo"}
               </Button>
@@ -710,10 +710,10 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
       </div>
 
       <Dialog open={dialogo !== null} onOpenChange={(aberto) => !aberto && setDialogo(null)}>
-        <DialogContent className="bg-white dark:bg-slate-950">
+        <DialogContent className="bg-card">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {dialogo === "excluir" ? <><Trash2 className="w-5 h-5 text-red-600" /> Excluir modelo</> : <><FilePlus2 className="w-5 h-5 text-blue-600" /> Restaurar modelos de fábrica</>}
+              {dialogo === "excluir" ? <><Trash2 className="w-5 h-5 text-red-600" /> Excluir modelo</> : <><FilePlus2 className="w-5 h-5 text-primary" /> Restaurar modelos de fábrica</>}
             </DialogTitle>
             <DialogDescription>
               {dialogo === "excluir"
@@ -725,7 +725,7 @@ export function EditorEtiquetas({ config, origem, tabelaAusente, amostras, onSal
             <Button variant="ghost" onClick={() => setDialogo(null)}>Cancelar</Button>
             {dialogo === "excluir"
               ? <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={excluirModelo}>Excluir</Button>
-              : <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={restaurarFabrica}>Restaurar</Button>}
+              : <Button className="bg-primary hover:bg-primary/90 text-white" onClick={restaurarFabrica}>Restaurar</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>

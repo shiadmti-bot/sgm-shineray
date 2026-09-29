@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { RoleGuard } from "@/components/RoleGuard";
+import { PageHeader } from "@/components/sgm/PageHeader";
 import { useZxing } from "react-zxing";
 import { 
   ScanBarcode, ArrowRight, CheckCircle2, Loader2, Camera, XCircle, Hash, PackagePlus, Box, History, AlertTriangle
@@ -233,31 +233,24 @@ export default function ScannerPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={['montador', 'supervisor', 'gestor', 'master']}>
-      <div className="h-[calc(100vh-100px)] p-4 max-w-7xl mx-auto flex flex-col animate-in fade-in duration-500">
-        
-        {/* CABEÇALHO */}
-        <div className="flex justify-between items-end mb-6 border-b border-slate-200 dark:border-slate-800 pb-4">
-          <div>
-            <h1 className="text-2xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-              <PackagePlus className="w-8 h-8 text-blue-600" />
-              RECEBIMENTO DE CAIXAS
-            </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Bipagem de entrada no CD. Motos ficarão <strong className="text-blue-500">Aguardando Montagem</strong>.
-            </p>
-          </div>
-          <Badge variant={cameraAtiva ? "destructive" : "outline"} className="animate-pulse">
-            {cameraAtiva ? "LENDO..." : "AGUARDANDO"}
-          </Badge>
-        </div>
+      <div className="flex min-h-[calc(100vh-160px)] flex-col gap-6 animate-in fade-in duration-500">
+        <PageHeader
+          icone={PackagePlus}
+          titulo="Recebimento de caixas"
+          descricao={<>Bipe o chassi na entrada do CD. A moto entra na fila como <strong className="text-foreground">Aguardando montagem</strong>.</>}
+          acoes={
+            <Badge variant={cameraAtiva ? "destructive" : "outline"} className="h-8 px-3">
+              {cameraAtiva ? "Lendo pela câmera…" : "Pronto para ler"}
+            </Badge>
+          }
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
           
           {/* ESQUERDA: CÂMERA E INPUT */}
           <div className="lg:col-span-5 flex flex-col gap-4">
             {/* Box da Câmera */}
-            <Card className="overflow-hidden border-2 border-slate-200 dark:border-slate-800 bg-black relative aspect-video lg:aspect-square flex items-center justify-center shadow-inner rounded-2xl">
+            <Card className="overflow-hidden border-2 border-border bg-black relative aspect-video lg:aspect-square flex items-center justify-center shadow-inner rounded-2xl">
                {cameraAtiva ? (
                  <>
                    <video ref={ref} className="w-full h-full object-cover" />
@@ -276,9 +269,9 @@ export default function ScannerPage() {
                     </div>
                     <div>
                       <h3 className="text-white font-bold text-lg">Câmera / Tablet</h3>
-                      <p className="text-slate-500 text-xs uppercase tracking-wide">Para bipagem móvel</p>
+                      <p className="text-muted-foreground text-xs uppercase tracking-wide">Para bipagem móvel</p>
                     </div>
-                    <Button onClick={() => setCameraAtiva(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-8 h-12 rounded-full font-bold w-full">
+                    <Button onClick={() => setCameraAtiva(true)} className="bg-primary hover:bg-primary/90 text-white px-8 h-12 rounded-full font-bold w-full">
                       ATIVAR
                     </Button>
                  </div>
@@ -286,10 +279,10 @@ export default function ScannerPage() {
             </Card>
 
             {/* Box do Input Manual */}
-            <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm">
+            <Card className="bg-card border-border shadow-sm">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1">
+                  <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1">
                       <Hash className="w-3 h-3" /> Pistola USB / Manual
                   </p>
                   {loading && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
@@ -300,7 +293,7 @@ export default function ScannerPage() {
                     value={codigo}
                     onChange={(e) => setCodigo(e.target.value.toUpperCase())}
                     placeholder="Chassi ou SKU..."
-                    className="font-mono uppercase tracking-widest text-lg h-12 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 focus:border-blue-500"
+                    className="font-mono uppercase tracking-widest text-lg h-12 bg-muted/50 border-border focus:border-blue-500"
                     disabled={loading || cameraAtiva}
                     maxLength={17}
                   />
@@ -313,18 +306,18 @@ export default function ScannerPage() {
 
             {/* Leituras desta sessão */}
             {leituras.length > 0 && (
-              <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm">
+              <Card className="bg-card border-border shadow-sm">
                 <CardContent className="p-4">
-                  <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1 mb-3">
+                  <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1 mb-3">
                     <History className="w-3 h-3" /> Últimas leituras ({leituras.filter(l => l.ok).length} registradas)
                   </p>
                   <ul className="space-y-1.5">
                     {leituras.map((l, i) => (
                       <li key={`${l.chassi}-${i}`} className="flex items-center gap-2 text-xs">
                         {l.ok ? <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
-                        <span className="font-mono text-slate-700 dark:text-slate-300">{l.chassi}</span>
-                        <span className="text-slate-400 truncate flex-1">{l.modelo} · {l.mensagem}</span>
-                        <span className="text-slate-400 font-mono shrink-0">{l.hora}</span>
+                        <span className="font-mono text-foreground/90">{l.chassi}</span>
+                        <span className="text-muted-foreground truncate flex-1">{l.modelo} · {l.mensagem}</span>
+                        <span className="text-muted-foreground font-mono shrink-0">{l.hora}</span>
                       </li>
                     ))}
                   </ul>
@@ -336,7 +329,7 @@ export default function ScannerPage() {
           {/* DIREITA: FEEDBACK DO REGISTRO */}
           <div className="lg:col-span-7 h-full">
              {ultimoRegistro ? (
-                <Card className="h-full border-l-8 border-l-blue-500 bg-white dark:bg-slate-900 border-y border-r border-slate-200 dark:border-slate-800 shadow-xl relative overflow-hidden animate-in slide-in-from-right duration-500">
+                <Card className="h-full border-l-8 border-l-blue-500 bg-card border-y border-r border-border shadow-xl relative overflow-hidden animate-in slide-in-from-right duration-500">
                    <div className="absolute -right-10 -bottom-10 opacity-5 pointer-events-none">
                       <Box className="w-80 h-80 text-blue-500" />
                    </div>
@@ -344,38 +337,38 @@ export default function ScannerPage() {
                    <CardContent className="p-8 flex flex-col h-full justify-center">
                       <div className="flex items-start justify-between mb-8">
                           <div>
-                              <p className="text-sm font-bold text-blue-600 dark:text-blue-500 uppercase tracking-widest mb-1 flex items-center gap-2">
+                              <p className="text-sm font-bold text-primary uppercase tracking-widest mb-1 flex items-center gap-2">
                                   <CheckCircle2 className="w-5 h-5" /> Adicionado à Fila
                               </p>
-                              <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white leading-tight">
+                              <h2 className="text-3xl md:text-5xl font-black text-foreground leading-tight">
                                   {ultimoRegistro.modelo}
                               </h2>
                           </div>
                           <div className="text-right">
-                              <Badge className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-lg px-4 py-1">
+                              <Badge className="bg-muted text-muted-foreground text-lg px-4 py-1">
                                   {ultimoRegistro.ano}
                               </Badge>
                           </div>
                       </div>
 
                       <div className="space-y-6 relative z-10">
-                          <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                              <p className="text-xs text-slate-400 uppercase font-bold mb-1">Chassi (VIN)</p>
-                              <p className="text-2xl font-mono tracking-widest text-slate-700 dark:text-slate-300">
+                          <div className="bg-muted/50 p-4 rounded-xl border border-border">
+                              <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Chassi (VIN)</p>
+                              <p className="text-2xl font-mono tracking-widest text-foreground/90">
                                   {ultimoRegistro.sku}
                               </p>
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
-                              <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                                  <p className="text-xs text-slate-400 uppercase font-bold mb-1">Status</p>
+                              <div className="bg-muted/50 p-4 rounded-xl border border-border">
+                                  <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Status</p>
                                   <Badge className="bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/30">
                                       AGUARDANDO
                                   </Badge>
                               </div>
-                              <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                                  <p className="text-xs text-slate-400 uppercase font-bold mb-1">Destino Sugerido</p>
-                                  <p className="text-lg font-bold text-slate-800 dark:text-white">
+                              <div className="bg-muted/50 p-4 rounded-xl border border-border">
+                                  <p className="text-xs text-muted-foreground uppercase font-bold mb-1">Destino Sugerido</p>
+                                  <p className="text-lg font-bold text-foreground">
                                       {ultimoRegistro.linha_destino}
                                   </p>
                               </div>
@@ -386,7 +379,7 @@ export default function ScannerPage() {
                           <Button 
                             variant="outline" 
                             onClick={() => setUltimoRegistro(null)}
-                            className="border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                            className="border-border hover:bg-accent"
                           >
                               Ler Próxima Caixa
                           </Button>
@@ -394,12 +387,12 @@ export default function ScannerPage() {
                    </CardContent>
                 </Card>
              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-slate-50/50 dark:bg-slate-900/20 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800">
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 bg-muted/50 rounded-2xl border-2 border-dashed border-border">
                    <div className="w-24 h-24 bg-white dark:bg-slate-800 rounded-full flex items-center justify-center mb-6 shadow-sm">
                       <ScanBarcode className="w-12 h-12 text-slate-300 dark:text-slate-600" />
                    </div>
-                   <h3 className="text-xl font-bold text-slate-700 dark:text-slate-300 mb-2">Pronto para Receber</h3>
-                   <p className="text-slate-400 max-w-xs mx-auto mb-8">
+                   <h3 className="text-xl font-bold text-foreground/90 mb-2">Pronto para Receber</h3>
+                   <p className="text-muted-foreground max-w-xs mx-auto mb-8">
                       Aponte para a etiqueta da caixa. O sistema registrará na fila de montagem automaticamente.
                    </p>
                 </div>
@@ -409,7 +402,7 @@ export default function ScannerPage() {
 
         {/* MODAL RESOLUÇÃO MODELO DESCONHECIDO */}
         <Dialog open={modalModeloDesconhecidoOpen} onOpenChange={setModalModeloDesconhecidoOpen}>
-            <DialogContent className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+            <DialogContent className="bg-card border-border">
                 <DialogHeader>
                     <DialogTitle className="text-amber-600 flex items-center gap-2">
                          <Box className="w-5 h-5"/> Chassi Não Reconhecido
@@ -420,18 +413,18 @@ export default function ScannerPage() {
                 </DialogHeader>
                 
                 <div className="space-y-4 py-4">
-                    <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
-                        <p className="text-xs text-slate-400 uppercase font-bold">Chassi Bipado</p>
-                        <p className="font-mono text-lg font-bold tracking-widest text-slate-800 dark:text-slate-100">{chassiPendente}</p>
+                    <div className="bg-muted/50 p-3 rounded-lg border border-border">
+                        <p className="text-xs text-muted-foreground uppercase font-bold">Chassi Bipado</p>
+                        <p className="font-mono text-lg font-bold tracking-widest text-foreground">{chassiPendente}</p>
                     </div>
 
-                    <div className="flex items-center gap-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+                    <div className="flex items-center gap-4 border-b border-border pb-3">
                          <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
                               <input 
                                    type="radio" 
                                    checked={!usarCustomModelo} 
                                    onChange={() => setUsarCustomModelo(false)} 
-                                   className="text-blue-600 focus:ring-blue-500"
+                                   className="text-primary focus:ring-ring"
                               />
                               Selecionar da lista
                          </label>
@@ -440,7 +433,7 @@ export default function ScannerPage() {
                                    type="radio" 
                                    checked={usarCustomModelo} 
                                    onChange={() => setUsarCustomModelo(true)} 
-                                   className="text-blue-600 focus:ring-blue-500"
+                                   className="text-primary focus:ring-ring"
                               />
                               Digitar manualmente
                          </label>
@@ -448,7 +441,7 @@ export default function ScannerPage() {
 
                     {!usarCustomModelo ? (
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-400 uppercase">Modelo do Catálogo</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase">Modelo do Catálogo</label>
                             <Select onValueChange={setModeloSelecionado} value={modeloSelecionado}>
                                 <SelectTrigger className="w-full">
                                      <SelectValue placeholder="Selecione um modelo..."/>
@@ -462,7 +455,7 @@ export default function ScannerPage() {
                         </div>
                     ) : (
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-400 uppercase">Modelo Personalizado</label>
+                            <label className="text-xs font-bold text-muted-foreground uppercase">Modelo Personalizado</label>
                             <Input 
                                  placeholder="Ex: SHI 175 EFI 2026..." 
                                  value={customModelo} 
@@ -483,7 +476,7 @@ export default function ScannerPage() {
                               setModalModeloDesconhecidoOpen(false);
                               await registrarMotoNoBanco(chassiPendente, mod, metadadosPendentes);
                          }} 
-                         className="bg-blue-600 hover:bg-blue-700 text-white"
+                         className="bg-primary hover:bg-primary/90 text-white"
                     >
                          Confirmar Entrada
                     </Button>
@@ -492,6 +485,5 @@ export default function ScannerPage() {
         </Dialog>
 
       </div>
-    </RoleGuard>
   );
 }
