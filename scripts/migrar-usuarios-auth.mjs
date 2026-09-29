@@ -35,6 +35,7 @@ const senhaDoPin = (pin) => `pin-${pin}-secure`;
 
 function emailLogin(f) {
   const matricula = String(f.matricula ?? "").trim().toLowerCase();
+  if (matricula && EMAIL_VALIDO.test(matricula)) return matricula;
   if (matricula && /^[a-z0-9._-]+$/.test(matricula)) return `${matricula}@${DOMINIO_TECNICO}`;
   const email = String(f.email ?? "").trim().toLowerCase();
   if (EMAIL_VALIDO.test(email)) return email;

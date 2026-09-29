@@ -18,6 +18,7 @@ export const matriculaValida = (matricula: string) => MATRICULA_VALIDA.test(matr
 /** E-mail usado no Supabase Auth: técnico (pela matrícula) ou o e-mail real. `null` se nenhum for válido. */
 export function emailLogin(dados: { matricula?: string | null; email?: string | null }): string | null {
   const matricula = String(dados.matricula ?? "").trim().toLowerCase();
+  if (matricula && EMAIL_VALIDO.test(matricula)) return matricula;
   if (matricula && MATRICULA_VALIDA.test(matricula)) return `${matricula}@${DOMINIO_TECNICO}`;
   const email = String(dados.email ?? "").trim().toLowerCase();
   if (EMAIL_VALIDO.test(email)) return email;
